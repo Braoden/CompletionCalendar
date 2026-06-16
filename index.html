@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Calendar</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <button class="add-task-btn" id="addTaskBtn" aria-label="Add task">+  Add Task</button>
+
+    <div class="task-modal-overlay" id="taskModalOverlay">
+        <div class="task-modal" role="dialog" aria-modal="true" aria-labelledby="taskModalTitle">
+            <h2 class="tm-title" id="taskModalTitle">New Task</h2>
+            <form id="taskForm" novalidate>
+                <div class="tm-field">
+                    <label class="tm-label" for="taskName">Name</label>
+                    <input class="tm-input" type="text" id="taskName" autocomplete="off" placeholder="Task name">
+                    <span class="tm-error" id="taskNameError"></span>
+                </div>
+
+                <div class="tm-field">
+                    <label class="tm-label" for="taskColor">Color</label>
+                    <div class="tm-color-row">
+                        <input class="tm-input tm-color-text" type="text" id="taskColor" autocomplete="off" placeholder="#23a8f2" maxlength="7">
+                        <input class="tm-color-swatch" type="color" id="taskColorPicker" value="#23a8f2" aria-label="Pick color">
+                    </div>
+                    <span class="tm-error" id="taskColorError"></span>
+                </div>
+
+                <div class="tm-field">
+                    <label class="tm-label">Task Type</label>
+                    <div class="tm-toggle" id="taskTypeToggle">
+                        <button type="button" class="tm-toggle-opt active" data-type="Completion">Completion</button>
+                        <button type="button" class="tm-toggle-opt" data-type="Repeated">Repeated</button>
+                    </div>
+                </div>
+
+                <div class="tm-actions">
+                    <button type="button" class="tm-btn tm-cancel" id="taskCancelBtn">Cancel</button>
+                    <button type="submit" class="tm-btn tm-submit">Create Task</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="app-wrapper">
+    <div class="day-panel" id="dayPanel">
+        <div class="day-panel-inner">
+            <div class="dp-date">
+                <span class="dp-weekday" id="dpWeekday"></span>
+                <span class="dp-num" id="dpNum"></span>
+                <span class="dp-month" id="dpMonth"></span>
+                <span class="dp-year" id="dpYear"></span>
+            </div>
+            <div class="dp-blank-btn"></div>
+            <div class="dp-blank-btn"></div>
+            <div class="dp-blank-btn"></div>
+            <div class="dp-blank-btn"></div>
+            <div class="dp-blank-btn"></div>
+            <div class="dp-blank-btn"></div>
+        </div>
+    </div>
+    <div class="task-panel" id="taskPanel">
+        <div class="task-panel-inner">
+            <div class="tp-header">
+            </div>
+            <div class="tp-body" id="taskPanelBody">
+                <div class="tp-jar"><span class="tp-jar-lid"></span><span class="tp-jar-body"></span></div>
+                <div class="tp-jar"><span class="tp-jar-lid"></span><span class="tp-jar-body"></span></div>
+                <div class="tp-jar"><span class="tp-jar-lid"></span><span class="tp-jar-body"></span></div>
+                <div class="tp-jar"><span class="tp-jar-lid"></span><span class="tp-jar-body"></span></div>
+                <div class="tp-jar"><span class="tp-jar-lid"></span><span class="tp-jar-body"></span></div>
+                <div class="tp-jar"><span class="tp-jar-lid"></span><span class="tp-jar-body"></span></div>
+            </div>
+        </div>
+    </div>
+    <div class="calendar mode-month" id="calendar">
+        <!-- Top bar: month controls + year controls crossfade -->
+        <div class="topbar">
+            <div class="bar month-bar">
+                <button class="nav-btn" id="prevBtn" aria-label="Previous month"><span>◄</span></button>
+                <div class="title-group">
+                    <button class="year-chip" id="yearChip" aria-label="View whole year">2026</button>
+                    <h1 id="monthTitle">June</h1>
+                </div>
+                <button class="nav-btn" id="nextBtn" aria-label="Next month"><span>►</span></button>
+            </div>
+
+            <div class="bar year-bar">
+                <button class="nav-btn" id="prevYearBtn" aria-label="Previous year"><span>◄</span></button>
+                <h1 id="yearTitle">2026</h1>
+                <button class="nav-btn" id="nextYearBtn" aria-label="Next year"><span>►</span></button>
+            </div>
+        </div>
+
+        <!-- Stage: persistent 4x3 grid of month cards -->
+        <div class="months" id="months">
+            <!-- Month cards generated here -->
+        </div>
+    </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/Flip.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

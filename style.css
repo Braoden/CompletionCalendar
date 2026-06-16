@@ -1,0 +1,834 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    background: #07111a;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+}
+
+.app-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    width: 100%;
+    max-width: 1000px;
+    justify-content: center;
+}
+
+.calendar {
+    margin: 0 auto;
+}
+
+/* ── Add Task button ── */
+.add-task-btn {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    z-index: 100;
+    background: #0c2233;
+    color: #5bb4ef;
+    border: 1px solid #173a54;
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 0.3px;
+    transition: background 0.18s ease, color 0.18s ease,
+                border-color 0.18s ease, transform 0.1s ease;
+}
+
+.add-task-btn:hover {
+    background: #123249;
+    color: #d6ecfb;
+    border-color: #23a8f2;
+}
+
+.add-task-btn:active { transform: scale(0.94); }
+
+.add-task-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* ── Task creation modal ── */
+.task-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    background: rgba(3, 8, 13, 0.7);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.22s ease;
+}
+
+.task-modal-overlay.open {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.task-modal {
+    width: 360px;
+    max-width: calc(100vw - 32px);
+    background: #0a1722;
+    border: 1px solid #173a54;
+    border-radius: 12px;
+    padding: 26px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    transform: translateY(12px) scale(0.98);
+    transition: transform 0.22s ease;
+}
+
+.task-modal-overlay.open .task-modal {
+    transform: translateY(0) scale(1);
+}
+
+.tm-title {
+    font-size: 20px;
+    font-weight: 600;
+    margin-bottom: 16px;
+    color: #d6ecfb;
+    letter-spacing: 0.3px;
+}
+
+#taskForm {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.tm-field {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.tm-label {
+    font-size: 10px;
+    font-weight: 700;
+    color: #4a7a9b;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.tm-input {
+    width: 100%;
+    background: #07111a;
+    border: 1px solid #173a54;
+    border-radius: 8px;
+    padding: 11px 12px;
+    color: #d6ecfb;
+    font-size: 14px;
+    font-family: inherit;
+    transition: border-color 0.18s ease;
+}
+
+.tm-input::placeholder { color: #2d5470; }
+
+.tm-input:focus {
+    outline: none;
+    border-color: #23a8f2;
+}
+
+.tm-input.invalid { border-color: #e0526a; }
+
+.tm-color-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.tm-color-text { flex: 1; }
+
+.tm-color-swatch {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 1px solid #173a54;
+    border-radius: 8px;
+    background: #07111a;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.tm-color-swatch::-webkit-color-swatch-wrapper { padding: 4px; }
+.tm-color-swatch::-webkit-color-swatch { border: none; border-radius: 5px; }
+.tm-color-swatch::-moz-color-swatch { border: none; border-radius: 5px; }
+
+.tm-error {
+    font-size: 11px;
+    color: #e0526a;
+    min-height: 13px;
+    line-height: 13px;
+}
+
+/* ── Task type toggle ── */
+.tm-toggle {
+    display: flex;
+    background: #07111a;
+    border: 1px solid #173a54;
+    border-radius: 8px;
+    padding: 3px;
+    gap: 3px;
+    margin-bottom: 24px;
+}
+
+.tm-toggle-opt {
+    flex: 1;
+    background: none;
+    border: none;
+    color: #6f9ec2;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: inherit;
+    padding: 9px 0;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.18s ease, color 0.18s ease;
+}
+
+.tm-toggle-opt.active {
+    background: #173a54;
+    color: #d6ecfb;
+}
+
+/* ── Modal actions ── */
+.tm-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 4px;
+}
+
+.tm-btn {
+    flex: 1;
+    padding: 11px 0;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 700;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.18s ease, color 0.18s ease,
+                border-color 0.18s ease, transform 0.1s ease;
+}
+
+.tm-btn:active { transform: scale(0.96); }
+
+.tm-cancel {
+    background: none;
+    color: #6f9ec2;
+    border: 1px solid #173a54;
+}
+
+.tm-cancel:hover {
+    background: #0c2233;
+    color: #d6ecfb;
+}
+
+.tm-submit {
+    background: #23a8f2;
+    color: #07111a;
+    border: 1px solid #23a8f2;
+}
+
+.tm-submit:hover { background: #54bdf6; }
+
+/* ── A created task button in the day panel ── */
+.dp-task-btn {
+    width: 100%;
+    padding: 24px 12px;
+    margin-top: 8px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 700;
+    color: #07111a;
+    cursor: pointer;
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: transform 0.18s ease, filter 0.18s ease;
+}
+
+.dp-task-btn:hover {
+    filter: brightness(1.1);
+    transform: translateY(-1px);
+}
+
+/* ── Day detail panel ── */
+.day-panel {
+    position: absolute;
+    left: -35%;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 400px;
+    height: 640px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.5s ease, transform 0.25s ease;
+}
+
+.app-wrapper.day-selected .day-panel {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.day-panel.reveal {
+    animation: day-panel-reveal 0.28s ease;
+}
+
+@keyframes day-panel-reveal {
+    from {
+        transform: translateY(calc(-50% - 10px));
+        opacity: 0;
+    }
+    to {
+        transform: translateY(-50%);
+        opacity: 1;
+    }
+}
+
+.day-panel-inner {
+    width: 400px;
+    border-radius: 12px;
+    padding: 24px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.dp-date {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+}
+
+.dp-weekday {
+    font-size: 11px;
+    font-weight: 700;
+    color: #23a8f2;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+}
+
+.dp-num {
+    font-size: 52px;
+    font-weight: 700;
+    color: #d6ecfb;
+    line-height: 1;
+    margin: 4px 0 2px;
+}
+
+.dp-month {
+    font-size: 16px;
+    font-weight: 600;
+    color: #8fb6d6;
+}
+
+.dp-year {
+    font-size: 13px;
+    color: #4a7a9b;
+}
+
+.dp-divider {
+    height: 1px;
+    background: #173a54;
+}
+
+.dp-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.dp-label {
+    font-size: 10px;
+    font-weight: 700;
+    color: #4a7a9b;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.dp-empty {
+    font-size: 13px;
+    color: #2d5470;
+    font-style: italic;
+}
+
+.dp-blank-btn {
+    width: 100%;
+    padding: 24px 0px;
+    margin-top: 8px;
+    border: 1px solid #0c2233;
+    border-radius: 8px;
+    background: #07111a;
+    font-size: 14px;
+    font-weight: 700;
+    transition: background 0.18s ease, transform 0.18s ease;
+}
+
+/* ── Task panel (mirror of day-panel, right side) ── */
+.task-panel {
+    position: absolute;
+    right: -37%;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 400px;
+    height: 800px;
+}
+
+.task-panel-inner {
+    width: 400px;
+    border-radius: 12px;
+    padding: 24px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.tp-header {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+}
+
+.tp-title {
+    font-size: 28px;
+    font-weight: 700;
+    color: #d6ecfb;
+    line-height: 1;
+}
+
+.tp-body {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+    row-gap: 60px;
+    column-gap: 48px;
+}
+
+/* ── Jars (2x3 grid inside task panel) ── */
+.tp-jar {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    height: 190px;
+}
+
+/* Stagger: left column (odd) down, right column (even) up */
+.tp-jar:nth-child(odd)  { transform: translateY(44px); }
+.tp-jar:nth-child(even) { transform: translateY(-44px); }
+
+.tp-jar-lid {
+    width: 86px;
+    height: 20px;
+    border-radius: 6px 6px 3px 3px;
+    /* Empty state: greyed out */
+    border: 1px solid #0c2233;
+    transition: background 0.25s ease, border-color 0.25s ease;
+}
+
+.tp-jar-body {
+    width: 124px;
+    height: 150px;
+    margin-top: 2px;
+    border-radius: 10px 10px 18px 18px;
+    /* Empty state: transparent */
+    background: transparent;
+    border: 1px solid #0c2233;
+    box-shadow: none;
+    transition: background 0.25s ease, border-color 0.25s ease,
+                box-shadow 0.25s ease;
+}
+
+/* Filled state: original jar color; body becomes visible. */
+.tp-jar.filled .tp-jar-lid {
+    background: #21486a;
+    border-color: #2f6394;
+}
+
+.tp-jar.filled .tp-jar-body {
+    background: linear-gradient(135deg, #0c2233, #0a1722);
+    border-color: #21486a;
+    box-shadow: inset 0 0 24px rgba(35, 168, 242, 0.08);
+}
+
+.calendar {
+    position: relative;   /* anchor for the absolutely-placed title bar */
+    width: 100%;
+    max-width: 720px;
+    display: flex;
+    flex-direction: column;
+    animation: slideIn 0.3s ease-out;
+    flex-shrink: 0;
+}
+
+@keyframes slideIn {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Top bar (two bars crossfade between modes) ── */
+/* Floated above the grid so the months grid itself is what gets vertically
+   centered, with the month/year title sitting above it. */
+.topbar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: calc(100% + 20px);
+    height: 56px;
+}
+
+.bar {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    transition: opacity 0.3s ease;
+}
+
+.mode-month .month-bar { opacity: 1; pointer-events: auto; }
+.mode-month .year-bar  { opacity: 0; pointer-events: none; }
+.mode-year  .year-bar  { opacity: 1; pointer-events: auto; }
+.mode-year  .month-bar { opacity: 0; pointer-events: none; }
+
+.title-group {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+
+.year-chip {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 700;
+    color: #23a8f2;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 2px 10px;
+    border-radius: 4px;
+    transition: color 0.18s ease, background 0.18s ease;
+}
+
+.year-chip:hover {
+    color: #54bdf6;
+    background: rgba(35, 168, 242, 0.12);
+}
+
+#monthTitle,
+#yearTitle {
+    font-size: 22px;
+    font-weight: 600;
+    color: #d6ecfb;
+    letter-spacing: 0.3px;
+    text-align: center;
+}
+
+#yearTitle { flex: 1; }
+
+.nav-btn {
+    background: #0c2233;
+    color: #5bb4ef;
+    border: 1px solid #173a54;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    font-size: 15px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease, transform 0.1s ease;
+    flex-shrink: 0;
+}
+
+.nav-btn:hover {
+    background: #123249;
+    color: #d6ecfb;
+    border-color: #23a8f2;
+}
+
+.nav-btn:active { transform: scale(0.92); }
+
+/* ── Stage: persistent 4x3 grid of month cards ── */
+.months {
+    position: relative;
+    width: 100%;
+    height: 660px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+    gap: 14px;
+}
+
+/* ── A single month card (mini by default) ── */
+.m-card {
+    border: none;
+    border-radius: 5px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    cursor: pointer;
+    overflow: hidden;
+    min-height: 0;
+    transition: opacity 0.3s ease, transform 0.2s ease,
+                background 0.2s ease, border-color 0.2s ease;
+}
+
+.mode-year .m-card:hover {
+    background: #0c2233;
+    border-color: #23a8f2;
+    transform: translateY(-3px);
+}
+
+.m-card.cur { border-color: #1f5d82; }
+
+/* Other 11 months collapse away in month mode */
+.mode-month .m-card {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* The zoomed (enlarged, centered) month fills the whole stage */
+.m-card.is-zoomed {
+    position: absolute;
+    /* Span the whole grid so the absolute box is sized against .months,
+       not the single grid cell its inline grid-area would otherwise pin it to. */
+    grid-area: 1 / 1 / -1 / -1 !important;
+    inset: 0;
+    z-index: 20;
+    opacity: 1 !important;
+    pointer-events: auto;
+    cursor: default;
+    border-color: #173a54;
+    transform: none;
+    padding: 4px 6px;
+    justify-content: center;   /* center the month grid vertically */
+    gap: 14px;
+}
+
+/* Lifted above siblings while the FLIP animation runs */
+.m-card.flipping { z-index: 30; }
+
+/* ── Card head (month name — shown only on minis) ── */
+.m-head {
+    font-size: 12px;
+    font-weight: 600;
+    color: #5bb4ef;
+    text-align: center;
+    height: 18px;
+    line-height: 18px;
+    flex-shrink: 0;
+    overflow: hidden;
+    /* Returning to year view: the previously zoomed month's name fades in
+       after the zoom-out settles. The prompt hide is defined on .is-zoomed. */
+    transition: opacity 0.18s ease 0.28s, height 0.18s ease 0.28s;
+}
+
+.m-card.cur .m-head { color: #8fcdf5; }
+
+.m-card.is-zoomed .m-head {
+    height: 0;
+    opacity: 0;
+    transition: opacity 0.18s ease, height 0.18s ease;
+}
+
+/* Increase vertical padding for the month name when in year view */
+.mode-year .m-head {
+    padding: 12px 0;
+    height: auto;
+    line-height: 18px;
+}
+
+/* ── Weekday labels (shown only on the zoomed card) ── */
+.m-weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+    height: 0;
+    opacity: 0;
+    overflow: hidden;
+    flex-shrink: 0;
+    /* Fade-out (month -> year) is immediate; the smooth, delayed fade-in is
+       defined on the .is-zoomed rule below. */
+    transition: none;
+}
+
+.m-card.is-zoomed .m-weekdays {
+    grid-template-columns: repeat(7, 80px);
+    gap: 16px;
+    justify-content: center;
+    height: 22px;
+    opacity: 1;
+    /* fade in after the zoom settles */
+    transition: opacity 0.2s ease 0.28s, height 0.2s ease 0.28s;
+}
+
+.m-weekdays span {
+    text-align: center;
+    font-size: 10px;
+    font-weight: 600;
+    color: #6f9ec2;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    line-height: 22px;
+}
+
+/* ── Day grid ── */
+/* Minis: cells stretch to fill the card, numbers hidden. */
+.m-days {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    grid-auto-rows: auto;
+    gap: 6px;
+    flex: 1;
+    min-height: 0;
+}
+
+.cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    min-height: 0;
+}
+
+.cell.other { opacity: 0.2; }
+
+.day-box {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    flex: none;
+    min-height: 0;
+    background: #0c2233;
+    border: 1px solid #16344c;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+/* Border-radius adjustments per view mode */
+.mode-month .day-box { border-radius: 8px; }
+.mode-year  .day-box { border-radius: 1px; }
+
+.cell.today .day-box {
+    background: #23a8f2;
+    border-color: #23a8f2;
+    box-shadow: 0 2px 12px rgba(35, 168, 242, 0.5);
+}
+
+/* Day numbers — hidden on minis, sit below each box on the zoomed card */
+.num {
+    display: none;
+    font-size: 13px;
+    font-weight: 500;
+    color: #8fb6d6;
+    line-height: 1;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+/* Zoomed month: centered grid of fixed 64x64 boxes with the number below. */
+.m-card.is-zoomed .m-days {
+    grid-template-columns: repeat(7, 64px);
+    grid-auto-rows: auto;
+    gap: 16px;
+    justify-content: center;
+    flex: none;   /* natural height so row gaps are preserved */
+}
+
+/* Increase horizontal spacing between day boxes in month (zoomed) view */
+.m-card.is-zoomed .m-days {
+    column-gap: 32px; /* larger x-axis gap */
+}
+
+.m-card.is-zoomed .day-box {
+    width: 64px;
+    height: 64px;
+    flex: none;
+}
+
+.m-card.is-zoomed .num {
+    display: block;
+    opacity: 1;
+    transition-delay: 0.28s;   /* fade in after the zoom settles */
+}
+
+.m-card.is-zoomed .cell.today .num {
+    color: #d6ecfb;
+    font-weight: 700;
+}
+
+/* Hover + selection only meaningful on the zoomed (interactive) card */
+.m-card.is-zoomed .cell:not(.other) { cursor: pointer; }
+
+.m-card.is-zoomed .cell:not(.other):hover .day-box {
+    background: #123249;
+    border-color: #23a8f2;
+    transform: translateY(-1px);
+}
+
+.m-card.is-zoomed .cell.today:hover .day-box { background: #54bdf6; }
+
+.cell.selected .day-box {
+    background: #0f3e5c;
+    border-color: #2f7fb0;
+}
+
+.cell.selected .num { color: #d6ecfb; }
+
+/* ── Responsive ── */
+@media (max-width: 560px) {
+    body { padding: 14px; }
+
+    .months { height: 70vh; gap: 8px; }
+
+    #monthTitle, #yearTitle { font-size: 18px; }
+
+    .num { font-size: 12px; }
+
+    .nav-btn { width: 30px; height: 30px; font-size: 13px; }
+
+    .m-days, .m-weekdays { gap: 3px; }
+
+    .m-card { padding: 5px; }
+
+    /* Shrink the zoomed month's fixed boxes so 7 columns fit narrow screens. */
+    .m-card.is-zoomed .m-days,
+    .m-card.is-zoomed .m-weekdays {
+        grid-template-columns: repeat(7, 1fr);
+        gap: 8px;
+    }
+
+    .m-card.is-zoomed .day-box {
+        width: 100%;
+        aspect-ratio: 1;
+        height: auto;
+    }
+
+    /* Keep the month-view horizontal gap reasonable on small screens */
+    .mode-month .m-card.is-zoomed .m-days { column-gap: 8px; }
+}
