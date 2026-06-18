@@ -4,6 +4,12 @@
     box-sizing: border-box;
 }
 
+/* ── Ball size configuration ── */
+:root {
+    --ball-completion-size: 20px;
+    --ball-repeated-size: 12px;
+}
+
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
     background: #07111a;
@@ -258,16 +264,74 @@ body {
     font-weight: 700;
     color: #07111a;
     cursor: pointer;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+    transition: transform 0.18s ease, filter 0.18s ease, opacity 0.18s ease;
+}
+
+.dp-task-label {
+    flex: 1;
     text-align: center;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    transition: transform 0.18s ease, filter 0.18s ease;
 }
 
-.dp-task-btn:hover {
+.dp-task-undo {
+    opacity: 0;
+    pointer-events: none;
+    font-size: 17px;
+    color: rgba(0, 0, 0, 0.55);
+    transition: opacity 0.15s ease;
+    flex-shrink: 0;
+    width: 26px;
+    text-align: center;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.dp-task-btn.has-balls:hover .dp-task-undo {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.dp-task-btn.done {
+    opacity: 0.6;
+    cursor: default;
+}
+
+.dp-task-btn.done .dp-task-label {
+    font-size: 20px;
+}
+
+.dp-task-btn:not(.done):hover {
     filter: brightness(1.1);
     transform: translateY(-1px);
+}
+
+.dp-task-btn:not(.done):active {
+    filter: brightness(1.2);
+    transform: scale(0.97) translateY(1px);
+}
+
+/* ── Balls inside day boxes ── */
+.ball {
+    position: absolute;
+    border-radius: 50%;
+    pointer-events: none;
+    opacity: 0.9;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+.ball-completion {
+    width: var(--ball-completion-size);
+    height: var(--ball-completion-size);
+}
+
+.ball-repeated {
+    width: var(--ball-repeated-size);
+    height: var(--ball-repeated-size);
 }
 
 /* ── Day detail panel ── */
@@ -727,6 +791,8 @@ body {
     min-height: 0;
     background: #0c2233;
     border: 1px solid #16344c;
+    position: relative;
+    overflow: hidden;
     transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
 }
 

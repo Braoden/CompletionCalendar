@@ -12,7 +12,8 @@ const path = require('path');
 
 const PORT      = 5577;
 const ROOT      = __dirname;
-const DATA_FILE = path.join(ROOT, 'tasks.json');
+const DATA_FILE        = path.join(ROOT, 'tasks.json');
+const COMPLETIONS_FILE = path.join(ROOT, 'completions.json');
 const MAX_TASKS = 6;
 
 const MIME = {
@@ -36,6 +37,20 @@ function readTasks() {
 
 function writeTasks(tasks) {
     fs.writeFileSync(DATA_FILE, JSON.stringify(tasks, null, 2), 'utf-8');
+}
+
+function readCompletions() {
+    try {
+        const raw = fs.readFileSync(COMPLETIONS_FILE, 'utf-8');
+        const data = JSON.parse(raw);
+        return (data && typeof data === 'object' && !Array.isArray(data)) ? data : {};
+    } catch {
+        return {};
+    }
+}
+
+function writeCompletions(data) {
+    fs.writeFileSync(COMPLETIONS_FILE, JSON.stringify(data, null, 2), 'utf-8');
 }
 
 const isValidHex = (v) => typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v.trim());
@@ -100,6 +115,71 @@ async function handleApi(req, res) {
         tasks.push(task);
         writeTasks(tasks);
         return sendJson(res, 201, { task, tasks });
+    }
+
+    if (req.url === '/api/completions' && req.method === 'GET') {
+        return sendJson(res, 200, { completions: readCompletions() });
+    }
+
+    if (req.url === '/api/completions/add' && req.method === 'POST') {
+        let body;
+        try {
+            body = JSON.parse(await readBody(req) || '{}');
+        } catch {
+            return sendJson(res, 400, { error: 'Malformed JSON' });
+        }
+
+        const { date, taskName, pos } = body;
+        if (!date || !taskName) {
+            return sendJson(res, 400, { error: 'Missing fields' });
+        }
+        if (pos !== null && pos !== undefined) {
+            if (!Array.isArray(pos) || pos.length !== 2 ||
+                typeof pos[0] !== 'number' || typeof pos[1] !== 'number') {
+                return sendJson(res, 400, { error: 'Invalid position' });
+            }
+            if (pos[0] < 0 || pos[0] > 64 || pos[1] < 0 || pos[1] > 64) {
+                return sendJson(res, 400, { error: 'Position out of bounds' });
+            }
+        }
+
+        const tasks = readTasks();
+        const task = tasks.find(t => t.name === taskName);
+        if (!task) return sendJson(res, 404, { error: 'Task not found' });
+
+        const completions = readCompletions();
+        if (!completions[date]) completions[date] = {};
+        if (!completions[date][taskName]) completions[date][taskName] = [];
+
+        if (task.type === 'Completion' && completions[date][taskName].length >= 1) {
+            return sendJson(res, 409, { error: 'Task already completed for this date' });
+        }
+
+        const entry = (pos != null) ? [Math.round(pos[0]), Math.round(pos[1])] : null;
+        completions[date][taskName].push(entry);
+        writeCompletions(completions);
+        return sendJson(res, 200, { completions });
+    }
+
+    if (req.url === '/api/completions/remove' && req.method === 'POST') {
+        let body;
+        try {
+            body = JSON.parse(await readBody(req) || '{}');
+        } catch {
+            return sendJson(res, 400, { error: 'Malformed JSON' });
+        }
+
+        const { date, taskName } = body;
+        if (!date || !taskName) return sendJson(res, 400, { error: 'Missing fields' });
+
+        const completions = readCompletions();
+        if (completions[date]?.[taskName]?.length) {
+            completions[date][taskName].pop();
+            if (!completions[date][taskName].length) delete completions[date][taskName];
+            if (!Object.keys(completions[date] || {}).length) delete completions[date];
+            writeCompletions(completions);
+        }
+        return sendJson(res, 200, { completions });
     }
 
     return sendJson(res, 404, { error: 'Not found' });

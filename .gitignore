@@ -22,3 +22,4 @@ DESIGN.md
 
 # Runtime data written by the server
 tasks.json
+completions.json

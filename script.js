@@ -1,3 +1,22 @@
+// ── Ball physics tuning (pixels, seconds) ──
+const PHYSICS = {
+    G:            1800,    // gravity, px/s²
+    COR:          0.5,     // coefficient of restitution
+    DAMP:         0.99,    // per-step velocity damping (bleeds energy -> rest)
+    FLOOR_STICK:  30,      // below this |vy| on the floor, stop micro-bouncing
+    STEP:         1 / 120, // fixed physics timestep (s)
+    MAX_SUBSTEPS: 6,       // cap substeps/frame (avoids the spiral of death)
+    RELAX:        8,        // ball-ball position relaxation passes per step
+    SPAWN_PAD:    1,       // inset from the box edge at spawn
+    SPAWN_JITTER: 6,       // random y spread at spawn — breaks the synchronized
+                           // fall so a too-wide row can climb into a second row
+    SPAWN_VX:     30,      // small random horizontal launch speed (px/s)
+    REST_EPS:     5,    // per-ball px movement/frame counted as "still"
+    REST_FRAMES:  1000,      // consecutive still frames before sleeping
+    MAX_TIME:     6,       // hard stop for the animation loop (s)
+    MAX_ITERS:    2000,    // hard stop for the synchronous settle
+};
+
 class Calendar {
     constructor() {
         if (window.gsap && window.Flip) gsap.registerPlugin(Flip);
@@ -7,8 +26,8 @@ class Calendar {
         this.currentYear  = this.today.getFullYear();
         this.selectedMonth = this.currentMonth;
         this.selectedYear  = this.currentYear;
-        this.mode = 'month';          // 'month' | 'year'
-        this.cards = [];              // month index -> card element
+        this.mode = 'month';
+        this.cards = [];
 
         this.monthNames = [
             'January', 'February', 'March', 'April', 'May', 'June',
@@ -23,16 +42,22 @@ class Calendar {
         this.taskCount = 0;
         this.selectedTaskType = 'Completion';
 
+        this.tasks = [];
+        this.completions = {};
+        this.selectedDay = null;
+        this.selectedDateStr = null;
+        this.selectedCell = null;
+
         this.initElements();
         this.attachEventListeners();
 
         this.buildGrids(this.selectedYear);
-        // Initial state: month view, no animation.
         this.cards[this.selectedMonth].classList.add('is-zoomed');
         this.updateTitles();
 
-        // Restore any previously saved tasks from the backend.
-        this.loadTasks();
+        Promise.all([this.loadTasks(), this.loadCompletions()]).then(() => {
+            this.renderBallsForMonth(this.selectedMonth, this.selectedYear);
+        });
     }
 
     initElements() {
@@ -46,20 +71,18 @@ class Calendar {
         this.prevYearBtn = document.getElementById('prevYearBtn');
         this.nextYearBtn = document.getElementById('nextYearBtn');
 
-        /* Task creation */
-        this.addTaskBtn     = document.getElementById('addTaskBtn');
-        this.modalOverlay   = document.getElementById('taskModalOverlay');
-        this.taskForm       = document.getElementById('taskForm');
-        this.taskCancelBtn  = document.getElementById('taskCancelBtn');
-        this.taskNameInput  = document.getElementById('taskName');
-        this.taskColorInput = document.getElementById('taskColor');
+        this.addTaskBtn      = document.getElementById('addTaskBtn');
+        this.modalOverlay    = document.getElementById('taskModalOverlay');
+        this.taskForm        = document.getElementById('taskForm');
+        this.taskCancelBtn   = document.getElementById('taskCancelBtn');
+        this.taskNameInput   = document.getElementById('taskName');
+        this.taskColorInput  = document.getElementById('taskColor');
         this.taskColorPicker = document.getElementById('taskColorPicker');
-        this.taskNameError  = document.getElementById('taskNameError');
-        this.taskColorError = document.getElementById('taskColorError');
-        this.taskTypeToggle = document.getElementById('taskTypeToggle');
-        this.panelInner     = this.dayPanel.querySelector('.day-panel-inner');
+        this.taskNameError   = document.getElementById('taskNameError');
+        this.taskColorError  = document.getElementById('taskColorError');
+        this.taskTypeToggle  = document.getElementById('taskTypeToggle');
+        this.panelInner      = this.dayPanel.querySelector('.day-panel-inner');
 
-        /* Jars: each one mirrors a task slot (empty until a task fills it). */
         this.jars = Array.from(document.querySelectorAll('.tp-jar'));
     }
 
@@ -73,7 +96,6 @@ class Calendar {
 
         document.addEventListener('keydown', (e) => this.handleKeyboard(e));
 
-        /* ── Task creation ── */
         this.addTaskBtn.addEventListener('click', () => this.openTaskModal());
         this.taskCancelBtn.addEventListener('click', () => this.closeTaskModal());
         this.modalOverlay.addEventListener('click', (e) => {
@@ -81,7 +103,6 @@ class Calendar {
         });
         this.taskForm.addEventListener('submit', (e) => this.handleTaskSubmit(e));
 
-        // Keep the hex text field and the native color picker in sync.
         this.taskColorPicker.addEventListener('input', () => {
             this.taskColorInput.value = this.taskColorPicker.value;
             this.clearFieldError(this.taskColorInput, this.taskColorError);
@@ -167,7 +188,6 @@ class Calendar {
 
         const task = { name, color, type: this.selectedTaskType };
 
-        // Persist to the backend, then render on success.
         try {
             const res = await fetch('/api/tasks', {
                 method: 'POST',
@@ -182,6 +202,7 @@ class Calendar {
                 return;
             }
 
+            this.tasks.push(data.task);
             this.renderTaskButton(data.task);
             this.closeTaskModal();
         } catch {
@@ -190,39 +211,63 @@ class Calendar {
         }
     }
 
-    // Fetch saved tasks on startup and render them into the day panel.
     async loadTasks() {
         try {
             const res = await fetch('/api/tasks');
             if (!res.ok) return;
             const { tasks } = await res.json();
-            (tasks || []).forEach((task) => this.renderTaskButton(task));
+            (tasks || []).forEach((task) => {
+                this.tasks.push(task);
+                this.renderTaskButton(task);
+            });
         } catch {
-            // Offline / static hosting: silently keep the blank slots.
+            // Offline / static hosting
         }
     }
 
-    // Replace the topmost blank slot with a button for one task.
+    async loadCompletions() {
+        try {
+            const res = await fetch('/api/completions');
+            if (!res.ok) return;
+            const { completions } = await res.json();
+            this.completions = completions || {};
+        } catch {
+            // Offline / static hosting
+        }
+    }
+
     renderTaskButton(task) {
         const blank = this.panelInner.querySelector('.dp-blank-btn');
-        if (!blank) return;   // safety: no slot left
+        if (!blank) return;
 
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'dp-task-btn';
-        btn.textContent = task.name;
         btn.style.background = task.color;
+        btn.dataset.taskName = task.name;
         btn.dataset.taskType = task.type;
         btn.title = `${task.name} · ${task.type}`;
 
+        const undoArrow = document.createElement('span');
+        undoArrow.className = 'dp-task-undo';
+        undoArrow.textContent = '←';
+        undoArrow.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.handleUndo(task, btn);
+        });
+
+        const label = document.createElement('span');
+        label.className = 'dp-task-label';
+        label.textContent = task.name;
+
+        btn.appendChild(undoArrow);
+        btn.appendChild(label);
+        btn.addEventListener('click', () => this.handleTaskClick(task, btn));
+
         blank.replaceWith(btn);
-
-        // Light up the matching jar with this task's color.
         this.fillJar(this.taskCount, task);
-
         this.taskCount++;
 
-        // Animate the new button in: rise + scale with a subtle overshoot.
         if (window.gsap) {
             gsap.from(btn, {
                 duration: 0.45,
@@ -240,19 +285,349 @@ class Calendar {
         }
     }
 
-    // Connect a jar to a task: colour the lid, reveal the body. Empty jars
-    // keep their default greyed-out lid and transparent body.
+    /* ── Ball physics ── */
+
+    // Ball radii (px): derived from CSS variables --ball-completion-size and --ball-repeated-size
+    ballRadius(type) {
+        // Get sizes from CSS variables
+        const root = document.documentElement;
+        const completionSize = parseFloat(getComputedStyle(root).getPropertyValue('--ball-completion-size'));
+        const repeatedSize = parseFloat(getComputedStyle(root).getPropertyValue('--ball-repeated-size'));
+        return type === 'Completion' ? completionSize / 2 : repeatedSize / 2;
+    }
+
+    // Create a ball element dropped at the top of the box (fixed y, random x).
+    // Returns a physics body { el, r, x, y, vx, vy } at its spawn point.
+    makeBall(dayBox, taskName, color, type) {
+        const r   = this.ballRadius(type);
+        const w   = dayBox.clientWidth || 64;
+        const pad = PHYSICS.SPAWN_PAD;
+        const span = Math.max(0, w - 2 * (pad + r));
+
+        const el = document.createElement('div');
+        el.className    = `ball ball-${type.toLowerCase()}`;
+        el.dataset.task = taskName;
+        el.style.background = color;
+        dayBox.appendChild(el);
+
+        const ball = {
+            el, r,
+            x: pad + r + Math.random() * span,            // random x, ball-size aware
+            y: pad + r + Math.random() * PHYSICS.SPAWN_JITTER, // near the top, slight spread
+            vx: (Math.random() - 0.5) * PHYSICS.SPAWN_VX,
+            vy: 0,
+        };
+        this.placeBall(ball);
+        return ball;
+    }
+
+    // Read the balls already settled in a box back into physics bodies.
+    readBoxBalls(dayBox) {
+        return Array.from(dayBox.querySelectorAll('.ball')).map(el => {
+            const type = el.classList.contains('ball-completion') ? 'Completion' : 'Repeated';
+            const r = this.ballRadius(type);
+            return { el, r, x: el.offsetLeft + r, y: el.offsetTop + r, vx: 0, vy: 0 };
+        });
+    }
+
+    // Position a ball's element from its center coordinates (render step).
+    placeBall(b) {
+        b.el.style.left = (b.x - b.r) + 'px';
+        b.el.style.top  = (b.y - b.r) + 'px';
+    }
+
+    // Clamp a ball inside the box. With reflect, also bounce the velocity
+    // component (COR) — clamp-and-reflect inherently prevents wall tunneling.
+    clampToWalls(b, w, h, reflect) {
+        const { COR, FLOOR_STICK } = PHYSICS;
+        if (b.x < b.r)          { b.x = b.r;     if (reflect) b.vx = -b.vx * COR; }
+        else if (b.x > w - b.r) { b.x = w - b.r; if (reflect) b.vx = -b.vx * COR; }
+        if (b.y < b.r)          { b.y = b.r;     if (reflect) b.vy = -b.vy * COR; }
+        else if (b.y > h - b.r) {
+            b.y = h - b.r;
+            if (reflect) {
+                b.vy = -b.vy * COR;
+                if (Math.abs(b.vy) < FLOOR_STICK) b.vy = 0;   // settle on the floor
+            }
+        }
+    }
+
+    // Advance the simulation one fixed timestep: gravity, then wall + ball
+    // collisions. Pure physics — no DOM access.
+    stepPhysics(balls, w, h, dt) {
+        const { G, COR, DAMP, RELAX } = PHYSICS;
+
+        // 1) Integrate, damp, resolve walls (velocity bounce + clamp).
+        for (const b of balls) {
+            b.vy += G * dt;
+            b.vx *= DAMP;
+            b.vy *= DAMP;
+            b.x  += b.vx * dt;
+            b.y  += b.vy * dt;
+            this.clampToWalls(b, w, h, true);
+        }
+
+        // 2) Ball-to-ball. Apply the velocity impulse once, then relax
+        //    positions over several passes so chained / simultaneous overlaps
+        //    fully separate, re-clamping to the walls after each pass so a
+        //    push never leaves a ball out of bounds.
+        for (let pass = 0; pass < RELAX; pass++) {
+            for (let i = 0; i < balls.length; i++) {
+                for (let j = i + 1; j < balls.length; j++) {
+                    const a = balls[i], c = balls[j];
+                    let dx = c.x - a.x, dy = c.y - a.y;
+                    let dist = Math.hypot(dx, dy);
+                    const min = a.r + c.r;
+                    if (dist >= min) continue;
+
+                    // Coincident centers (e.g. two balls on the same spawn spot).
+                    if (dist === 0) {
+                        dx = Math.random() - 0.5;
+                        dy = Math.random() - 0.5;
+                        dist = Math.hypot(dx, dy) || 1e-6;
+                    }
+
+                    const nx = dx / dist, ny = dy / dist;   // collision normal A->B
+                    const overlap = min - dist;
+                    a.x -= nx * overlap / 2; a.y -= ny * overlap / 2;
+                    c.x += nx * overlap / 2; c.y += ny * overlap / 2;
+
+                    if (pass === 0) {
+                        const vn = (c.vx - a.vx) * nx + (c.vy - a.vy) * ny;
+                        if (vn < 0) {                        // only if approaching
+                            const imp = -(1 + COR) * vn / 2; // equal mass impulse
+                            a.vx -= imp * nx; a.vy -= imp * ny;
+                            c.vx += imp * nx; c.vy += imp * ny;
+                        }
+                    }
+                }
+            }
+            for (const b of balls) this.clampToWalls(b, w, h, false);
+        }
+    }
+
+    // True when total per-frame movement is negligible (balls at rest).
+    boxAtRest(balls, before) {
+        let moved = 0;
+        balls.forEach((b, i) => {
+            moved += Math.abs(b.x - before[i][0]) + Math.abs(b.y - before[i][1]);
+        });
+        return moved < PHYSICS.REST_EPS * balls.length;
+    }
+
+    // Animated drop: rAF loop running fixed substeps until the balls settle,
+    // then it stops (no idle CPU).
+    simulateBox(dayBox, balls, w, h) {
+        if (dayBox._raf) cancelAnimationFrame(dayBox._raf);
+
+        let last = performance.now(), acc = 0, elapsed = 0, restFrames = 0;
+        const tick = (now) => {
+            let dt = (now - last) / 1000;
+            last = now;
+            if (dt > 0.05) dt = 0.05;        // clamp huge gaps (tab refocus)
+            acc += dt; elapsed += dt;
+
+            const before = balls.map(b => [b.x, b.y]);
+            let steps = 0;
+            while (acc >= PHYSICS.STEP && steps < PHYSICS.MAX_SUBSTEPS) {
+                this.stepPhysics(balls, w, h, PHYSICS.STEP);
+                acc -= PHYSICS.STEP; steps++;
+            }
+            if (acc > PHYSICS.STEP) acc = 0;  // drop backlog after a stall
+            balls.forEach(b => this.placeBall(b));
+
+            restFrames = this.boxAtRest(balls, before) ? restFrames + 1 : 0;
+            if (restFrames >= PHYSICS.REST_FRAMES || elapsed > PHYSICS.MAX_TIME) {
+                dayBox._raf = null;
+                return;
+            }
+            dayBox._raf = requestAnimationFrame(tick);
+        };
+        dayBox._raf = requestAnimationFrame(tick);
+    }
+
+    // Synchronous settle: same physics, no animation — used to lay out the
+    // month overview without dozens of concurrent rAF loops.
+    settleBox(dayBox, balls, w, h) {
+        let restFrames = 0;
+        for (let i = 0; i < PHYSICS.MAX_ITERS; i++) {
+            const before = balls.map(b => [b.x, b.y]);
+            this.stepPhysics(balls, w, h, PHYSICS.STEP);
+            restFrames = this.boxAtRest(balls, before) ? restFrames + 1 : 0;
+            if (restFrames >= PHYSICS.REST_FRAMES) break;
+        }
+        balls.forEach(b => this.placeBall(b));
+    }
+
+    // Drop one new ball into a box alongside its settled balls, then animate.
+    spawnAndSimulate(dayBox, taskName, color, type) {
+        const w = dayBox.clientWidth  || 64;
+        const h = dayBox.clientHeight || 64;
+        const balls = this.readBoxBalls(dayBox);
+        const fresh = this.makeBall(dayBox, taskName, color, type);
+        balls.push(fresh);
+        this.simulateBox(dayBox, balls, w, h);
+        return fresh;
+    }
+
+    /* ── Task click / undo ── */
+
+    handleTaskClick(task, btn) {
+        if (!this.selectedCell || !this.selectedDateStr) return;
+        if (task.type === 'Completion' && btn.classList.contains('done')) return;
+
+        const dateStr = this.selectedDateStr;
+        const dayBox  = this.selectedCell.querySelector('.day-box');
+
+        if (!this.completions[dateStr]) this.completions[dateStr] = {};
+        if (!this.completions[dateStr][task.name]) this.completions[dateStr][task.name] = [];
+        this.completions[dateStr][task.name].push(null);   // count only; positions are re-dropped
+
+        const fresh = this.spawnAndSimulate(dayBox, task.name, task.color, task.type);
+        btn.classList.add('has-balls');
+
+        if (task.type === 'Completion') {
+            btn.classList.add('done');
+            btn.querySelector('.dp-task-label').textContent = '✓';
+        }
+
+        fetch('/api/completions/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ date: dateStr, taskName: task.name, pos: null }),
+        }).catch(() => {
+            // Rollback on network failure
+            this.completions[dateStr][task.name].pop();
+            fresh.el.remove();
+            const remaining = this.completions[dateStr]?.[task.name]?.length || 0;
+            btn.classList.toggle('has-balls', remaining > 0);
+            if (task.type === 'Completion') {
+                btn.classList.remove('done');
+                btn.querySelector('.dp-task-label').textContent = task.name;
+            }
+        });
+    }
+
+    handleUndo(task, btn) {
+        if (!this.selectedCell || !this.selectedDateStr) return;
+        const dateStr = this.selectedDateStr;
+        const entries = this.completions[dateStr]?.[task.name];
+        if (!entries || !entries.length) return;
+
+        const dayBox = this.selectedCell.querySelector('.day-box');
+        this.completions[dateStr][task.name].pop();
+
+        // Each entry maps to one ball — remove the most recent of this task.
+        if (dayBox._raf) { cancelAnimationFrame(dayBox._raf); dayBox._raf = null; }
+        const taskBalls = Array.from(dayBox.querySelectorAll('.ball'))
+            .filter(b => b.dataset.task === task.name);
+        if (taskBalls.length) taskBalls[taskBalls.length - 1].remove();
+
+        // Let the remaining pile collapse into the gap.
+        const pile = this.readBoxBalls(dayBox);
+        if (pile.length) {
+            this.settleBox(dayBox, pile, dayBox.clientWidth || 64, dayBox.clientHeight || 64);
+        }
+
+        if (!this.completions[dateStr][task.name].length) {
+            delete this.completions[dateStr][task.name];
+            if (!Object.keys(this.completions[dateStr]).length) {
+                delete this.completions[dateStr];
+            }
+        }
+
+        const remaining = this.completions[dateStr]?.[task.name]?.length || 0;
+        btn.classList.toggle('has-balls', remaining > 0);
+
+        if (task.type === 'Completion') {
+            btn.classList.remove('done');
+            btn.querySelector('.dp-task-label').textContent = task.name;
+        }
+
+        fetch('/api/completions/remove', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ date: dateStr, taskName: task.name }),
+        }).catch(() => {
+            this.loadCompletions().then(() => {
+                this.renderBallsForMonth(this.selectedMonth, this.selectedYear);
+                if (this.selectedDateStr) this.updateButtonStates(this.selectedDateStr);
+            });
+        });
+    }
+
+    updateButtonStates(dateStr) {
+        const dayData = this.completions[dateStr] || {};
+        this.panelInner.querySelectorAll('.dp-task-btn').forEach(btn => {
+            const taskName = btn.dataset.taskName;
+            const taskType = btn.dataset.taskType;
+            const label    = btn.querySelector('.dp-task-label');
+            const count    = dayData[taskName]?.length || 0;
+
+            btn.classList.toggle('has-balls', count > 0);
+
+            if (taskType === 'Completion') {
+                if (count >= 1) {
+                    btn.classList.add('done');
+                    if (label) label.textContent = '✓';
+                } else {
+                    btn.classList.remove('done');
+                    if (label) label.textContent = taskName;
+                }
+            }
+        });
+    }
+
+    /* ── Ball rendering ── */
+
+    renderBallsForMonth(m, year) {
+        const card = this.cards[m];
+        if (!card) return;
+        card.querySelectorAll('.cell:not(.other)').forEach(cell => {
+            const dayNum  = parseInt(cell.querySelector('.num').textContent);
+            const dateStr = this.dateKey(dayNum, m, year);
+            const dayBox  = cell.querySelector('.day-box');
+
+            if (dayBox._raf) { cancelAnimationFrame(dayBox._raf); dayBox._raf = null; }
+            dayBox.querySelectorAll('.ball').forEach(b => b.remove());
+
+            const dayData = this.completions[dateStr];
+            if (!dayData) return;
+
+            // Re-drop one ball per stored entry (positions are not persisted),
+            // then settle the whole box synchronously into a pile.
+            const balls = [];
+            Object.entries(dayData).forEach(([taskName, entries]) => {
+                const task = this.tasks.find(t => t.name === taskName);
+                if (!task || !entries.length) return;
+                for (let i = 0; i < entries.length; i++) {
+                    balls.push(this.makeBall(dayBox, taskName, task.color, task.type));
+                }
+            });
+
+            if (balls.length) {
+                this.settleBox(dayBox, balls, dayBox.clientWidth || 64, dayBox.clientHeight || 64);
+            }
+        });
+    }
+
+    /* ── Utilities ── */
+
+    dateKey(day, m, year) {
+        const mm = String(m + 1).padStart(2, '0');
+        const dd = String(day).padStart(2, '0');
+        return `${year}-${mm}-${dd}`;
+    }
+
     fillJar(index, task) {
         const jar = this.jars[index];
         if (!jar) return;
-
         jar.style.setProperty('--task-color', task.color);
         jar.style.setProperty('--task-color-soft', this.hexToRgba(task.color, 0.18));
         jar.classList.add('filled');
         jar.title = `${task.name} · ${task.type}`;
     }
 
-    // Convert a #rrggbb hex into an rgba() string with the given alpha.
     hexToRgba(hex, alpha) {
         const v = hex.replace('#', '');
         const r = parseInt(v.slice(0, 2), 16);
@@ -277,10 +652,15 @@ class Calendar {
         }
     }
 
-    /* ── Build the 12 month cards for a given year ── */
+    /* ── Calendar grid ── */
+
     buildGrids(year) {
         this.months.innerHTML = '';
         this.cards = [];
+        this.selectedCell    = null;
+        this.selectedDay     = null;
+        this.selectedDateStr = null;
+        this.appWrapper.classList.remove('day-selected');
 
         for (let m = 0; m < 12; m++) {
             this.months.appendChild(this.createCard(m, year));
@@ -290,8 +670,6 @@ class Calendar {
     createCard(m, year) {
         const card = document.createElement('div');
         card.className = 'm-card';
-        // Explicit placement so removing one from flow (when zoomed) never
-        // reshuffles the others.
         card.style.gridColumn = (m % 4) + 1;
         card.style.gridRow    = Math.floor(m / 4) + 1;
 
@@ -319,7 +697,6 @@ class Calendar {
         card.appendChild(weekdays);
         card.appendChild(days);
 
-        // In year view, clicking a card zooms into that month.
         card.addEventListener('click', () => {
             if (this.mode === 'year') this.zoomToMonth(m);
         });
@@ -362,8 +739,8 @@ class Calendar {
         cell.appendChild(num);
 
         const isToday = !isOther &&
-            day === this.today.getDate() &&
-            m === this.today.getMonth() &&
+            day  === this.today.getDate() &&
+            m    === this.today.getMonth() &&
             year === this.today.getFullYear();
         if (isToday) cell.classList.add('today');
 
@@ -374,6 +751,7 @@ class Calendar {
                 this.months.querySelectorAll('.cell.selected')
                     .forEach(c => c.classList.remove('selected'));
                 cell.classList.add('selected');
+                this.selectedCell = cell;
                 this.showDayPanel(day, m, year);
             });
         }
@@ -381,7 +759,8 @@ class Calendar {
         return cell;
     }
 
-    /* ── FLIP: animate one card between its mini slot and the full stage ── */
+    /* ── FLIP animation ── */
+
     flip(card, applyChanges) {
         const first = card.getBoundingClientRect();
         applyChanges();
@@ -396,7 +775,7 @@ class Calendar {
         card.style.transition = 'none';
         card.style.transformOrigin = 'top left';
         card.style.transform = `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`;
-        card.getBoundingClientRect();   // force reflow so the start frame sticks
+        card.getBoundingClientRect();
 
         requestAnimationFrame(() => {
             card.style.transition = 'transform 0.45s cubic-bezier(0.45, 0, 0.2, 1)';
@@ -424,6 +803,7 @@ class Calendar {
             this.container.classList.remove('mode-year');
             this.container.classList.add('mode-month');
             this.updateTitles();
+            this.renderBallsForMonth(m, this.selectedYear);
         });
     }
 
@@ -444,7 +824,8 @@ class Calendar {
         this.yearTitle.textContent  = this.selectedYear;
     }
 
-    /* ── Month navigation (within month view) ── */
+    /* ── Month navigation ── */
+
     previousMonth() {
         let m = this.selectedMonth - 1;
         if (m < 0) { m = 11; this.selectedYear--; this.buildGrids(this.selectedYear); }
@@ -457,20 +838,21 @@ class Calendar {
         this.swapZoomedMonth(m);
     }
 
-    // Switch the enlarged month without a zoom animation — both occupy the
-    // same full-stage rect, so it reads as a content change.
     swapZoomedMonth(m) {
         this.cards.forEach(c => c.classList.remove('is-zoomed'));
         this.selectedMonth = m;
         this.cards[m].classList.add('is-zoomed');
         this.updateTitles();
+        this.selectedCell    = null;
+        this.selectedDay     = null;
+        this.selectedDateStr = null;
+        this.appWrapper.classList.remove('day-selected');
+        this.renderBallsForMonth(m, this.selectedYear);
     }
 
-    /* ── Year navigation (within year view) ── */
     changeYear(delta) {
         this.selectedYear += delta;
         this.buildGrids(this.selectedYear);
-        // Stay in year view; freshly built cards have no zoomed card.
         this.updateTitles();
     }
 
@@ -478,13 +860,17 @@ class Calendar {
         const date = new Date(year, m, day);
         const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
         document.getElementById('dpWeekday').textContent = weekdays[date.getDay()];
-        document.getElementById('dpNum').textContent = day;
-        document.getElementById('dpMonth').textContent = this.monthNames[m];
-        document.getElementById('dpYear').textContent = year;
+        document.getElementById('dpNum').textContent     = day;
+        document.getElementById('dpMonth').textContent   = this.monthNames[m];
+        document.getElementById('dpYear').textContent    = year;
         this.appWrapper.classList.add('day-selected');
         this.dayPanel.classList.remove('reveal');
         void this.dayPanel.offsetWidth;
         this.dayPanel.classList.add('reveal');
+
+        this.selectedDay     = day;
+        this.selectedDateStr = this.dateKey(day, m, year);
+        this.updateButtonStates(this.selectedDateStr);
     }
 }
 
