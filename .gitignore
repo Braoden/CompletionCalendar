@@ -20,6 +20,9 @@ DESIGN.md
 # Local Claude settings (keep launch config out of the repo)
 .claude/
 
+#Graphify Files
+graphify-out/
+
 # Runtime data written by the server
 tasks.json
 completions.json

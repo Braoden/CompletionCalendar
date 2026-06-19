@@ -67,6 +67,80 @@ body {
     transform: none;
 }
 
+/* ── Delete Task button (sits left of Add Task) ── */
+.del-task-btn {
+    position: absolute;
+    top: 20px;
+    right: 142px;
+    z-index: 100;
+    background: #0c2233;
+    color: #ef6b6b;
+    border: 1px solid #173a54;
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 0.3px;
+    transition: background 0.18s ease, color 0.18s ease,
+                border-color 0.18s ease, transform 0.1s ease;
+}
+
+.del-task-btn:hover {
+    background: #2a1314;
+    color: #ff9b9b;
+    border-color: #e04545;
+}
+
+.del-task-btn:active { transform: scale(0.94); }
+
+/* ── Delete modal: 6 task slots ── */
+.del-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+}
+
+.del-slot {
+    position: relative;
+    height: 52px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 700;
+    color: #07111a;
+    cursor: pointer;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s ease, filter 0.15s ease;
+}
+
+.del-slot.empty {
+    background: #0c1822;
+    border: 1px dashed #1d3346;
+    cursor: default;
+}
+
+.del-slot-bin {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    opacity: 0;
+    color: #fff;
+}
+
+.del-slot:not(.empty):hover {
+    background: #e04545 !important;   /* override inline task color */
+}
+
+.del-slot:not(.empty):hover .del-slot-label { opacity: 0; }
+.del-slot:not(.empty):hover .del-slot-bin   { opacity: 1; }
+
 /* ── Task creation modal ── */
 .task-modal-overlay {
     position: fixed;
@@ -255,6 +329,7 @@ body {
 
 /* ── A created task button in the day panel ── */
 .dp-task-btn {
+    position: relative;
     width: 100%;
     padding: 24px 12px;
     margin-top: 8px;
@@ -267,7 +342,31 @@ body {
     display: flex;
     align-items: center;
     overflow: hidden;
-    transition: transform 0.18s ease, filter 0.18s ease, opacity 0.18s ease;
+    transition: transform 0.18s ease, filter 0.18s ease, opacity 0.18s ease,
+                background 0.3s ease;
+}
+
+/* Click feedback: a lighter band sweeps left->right, then fades back. */
+.dp-task-btn::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0;
+    background: linear-gradient(90deg,
+        rgba(255, 255, 255, 0) 0%,
+        rgba(255, 255, 255, 0.55) 50%,
+        rgba(255, 255, 255, 0) 100%);
+}
+
+.dp-task-btn.sweep::after {
+    animation: dpBtnSweep 0.6s ease;
+}
+
+@keyframes dpBtnSweep {
+    0%   { transform: translateX(-100%); opacity: 0; }
+    20%  { opacity: 1; }
+    100% { transform: translateX(100%);  opacity: 0; }
 }
 
 .dp-task-label {
@@ -276,6 +375,8 @@ body {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    line-height: 20px;   /* fixed box so the bigger ✓ doesn't grow the button */
+    transition: opacity 0.3s ease;
 }
 
 .dp-task-undo {
@@ -299,6 +400,7 @@ body {
 .dp-task-btn.done {
     opacity: 0.6;
     cursor: default;
+    background: #60b934 !important;   /* green on completion, regardless of task color */
 }
 
 .dp-task-btn.done .dp-task-label {
@@ -332,6 +434,79 @@ body {
 .ball-repeated {
     width: var(--ball-repeated-size);
     height: var(--ball-repeated-size);
+}
+
+/* ── Task-button ball + jar animation ── */
+.dp-task-btn-ball {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 1px solid #000;
+    flex-shrink: 0;
+    margin-left: 6px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+/* The ball in flight from button to jar — lives on <body>, above everything. */
+.flight-ball {
+    position: fixed;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 1px solid #000;
+    pointer-events: none;
+    z-index: 9999;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+/* Balls collected inside a jar — same physics as day-box balls. */
+.jar-ball {
+    position: absolute;
+    width: 19px;
+    height: 19px;
+    border-radius: 50%;
+    border: 1px solid #000;
+    pointer-events: none;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+/* ── Jar "complete" celebration ── */
+.jar-fill {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 0;                       /* fills bottom -> top, drains top -> bottom */
+    transition: height 0.6s ease;
+    pointer-events: none;
+}
+.jar-fill.full { height: 100%; }
+
+.jar-complete-text {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-size: 15px;
+    font-weight: 800;
+    color: #fff;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
+    opacity: 0;
+    transition: opacity 0.3s ease 0.4s;   /* fade in once the fill has risen */
+    pointer-events: none;
+    z-index: 2;
+}
+.jar-complete-text.show { opacity: 1; }
+
+.confetti {
+    position: fixed;
+    width: 8px;
+    height: 8px;
+    border-radius: 2px;
+    pointer-events: none;
+    z-index: 9999;
 }
 
 /* ── Day detail panel ── */
@@ -494,16 +669,16 @@ body {
     flex-direction: column;
     align-items: center;
     justify-content: flex-end;
-    height: 190px;
+    height: 199.5px;
 }
 
 /* Stagger: left column (odd) down, right column (even) up */
-.tp-jar:nth-child(odd)  { transform: translateY(44px); }
-.tp-jar:nth-child(even) { transform: translateY(-44px); }
+.tp-jar:nth-child(odd)  { transform: translateY(46.2px); }
+.tp-jar:nth-child(even) { transform: translateY(-46.2px); }
 
 .tp-jar-lid {
-    width: 86px;
-    height: 20px;
+    width: 90.3px;
+    height: 21px;
     border-radius: 6px 6px 3px 3px;
     /* Empty state: greyed out */
     border: 1px solid #0c2233;
@@ -511,8 +686,10 @@ body {
 }
 
 .tp-jar-body {
-    width: 124px;
-    height: 150px;
+    position: relative;     /* physics container for jar balls */
+    overflow: hidden;       /* keep settled balls inside */
+    width: 130.2px;
+    height: 157.5px;
     margin-top: 2px;
     border-radius: 10px 10px 18px 18px;
     /* Empty state: transparent */

@@ -8,6 +8,17 @@
 </head>
 <body>
     <button class="add-task-btn" id="addTaskBtn" aria-label="Add task">+  Add Task</button>
+    <button class="del-task-btn" id="delTaskBtn" aria-label="Delete task">🗑  Delete Task</button>
+
+    <div class="task-modal-overlay" id="delModalOverlay">
+        <div class="task-modal" role="dialog" aria-modal="true" aria-labelledby="delModalTitle">
+            <h2 class="tm-title" id="delModalTitle">Delete a Task</h2>
+            <div class="del-grid" id="delGrid"></div>
+            <div class="tm-actions">
+                <button type="button" class="tm-btn tm-cancel" id="delCancelBtn">Close</button>
+            </div>
+        </div>
+    </div>
 
     <div class="task-modal-overlay" id="taskModalOverlay">
         <div class="task-modal" role="dialog" aria-modal="true" aria-labelledby="taskModalTitle">

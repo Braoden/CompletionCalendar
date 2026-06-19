@@ -2,20 +2,31 @@
 const PHYSICS = {
     G:            1800,    // gravity, px/s²
     COR:          0.5,     // coefficient of restitution
-    DAMP:         0.99,    // per-step velocity damping (bleeds energy -> rest)
+    DAMP:         0.98,    // per-step velocity damping (bleeds energy -> rest)
     FLOOR_STICK:  30,      // below this |vy| on the floor, stop micro-bouncing
     STEP:         1 / 120, // fixed physics timestep (s)
     MAX_SUBSTEPS: 6,       // cap substeps/frame (avoids the spiral of death)
     RELAX:        8,        // ball-ball position relaxation passes per step
+    COLLIDE:      1.08,    // ball-ball collision radius multiplier (visual fudge)
     SPAWN_PAD:    1,       // inset from the box edge at spawn
     SPAWN_JITTER: 6,       // random y spread at spawn — breaks the synchronized
                            // fall so a too-wide row can climb into a second row
     SPAWN_VX:     30,      // small random horizontal launch speed (px/s)
     REST_EPS:     5,    // per-ball px movement/frame counted as "still"
-    REST_FRAMES:  1000,      // consecutive still frames before sleeping
+    REST_FRAMES:  80,      // consecutive still frames before sleeping
     MAX_TIME:     6,       // hard stop for the animation loop (s)
     MAX_ITERS:    2000,    // hard stop for the synchronous settle
+    LOAD_DELAY:   1000,    // pause (ms) before balls fall in on load
+    LOAD_STAGGER: 120,      // delay (ms) between each ball on load, so they don't overlap
 };
+
+const JAR_CAP  = 50;     // balls per jar before it "completes", celebrates and empties
+const JAR_HOLD = 2500;   // ms the "Jar Complete" state holds before the jar drains
+
+// Jar balls hitbox.
+const JAR_BALL_HALF = 9.5;                // visual half-size (px)
+const JAR_BALL_R    = 9.5 * 0.95;  // collision radius (px), a further 2% smaller
+const JAR_WALL_R    = JAR_BALL_R + 2.5;   // wall radius (px) — insets jar walls slightly
 
 class Calendar {
     constructor() {
@@ -56,7 +67,7 @@ class Calendar {
         this.updateTitles();
 
         Promise.all([this.loadTasks(), this.loadCompletions()]).then(() => {
-            this.renderBallsForMonth(this.selectedMonth, this.selectedYear);
+            setTimeout(() => this.dropInBalls(), PHYSICS.LOAD_DELAY);
         });
     }
 
@@ -83,6 +94,11 @@ class Calendar {
         this.taskTypeToggle  = document.getElementById('taskTypeToggle');
         this.panelInner      = this.dayPanel.querySelector('.day-panel-inner');
 
+        this.delTaskBtn      = document.getElementById('delTaskBtn');
+        this.delModalOverlay = document.getElementById('delModalOverlay');
+        this.delGrid         = document.getElementById('delGrid');
+        this.delCancelBtn    = document.getElementById('delCancelBtn');
+
         this.jars = Array.from(document.querySelectorAll('.tp-jar'));
     }
 
@@ -102,6 +118,12 @@ class Calendar {
             if (e.target === this.modalOverlay) this.closeTaskModal();
         });
         this.taskForm.addEventListener('submit', (e) => this.handleTaskSubmit(e));
+
+        this.delTaskBtn.addEventListener('click', () => this.openDeleteModal());
+        this.delCancelBtn.addEventListener('click', () => this.closeDeleteModal());
+        this.delModalOverlay.addEventListener('click', (e) => {
+            if (e.target === this.delModalOverlay) this.closeDeleteModal();
+        });
 
         this.taskColorPicker.addEventListener('input', () => {
             this.taskColorInput.value = this.taskColorPicker.value;
@@ -133,6 +155,55 @@ class Calendar {
     closeTaskModal() {
         this.modalOverlay.classList.remove('open');
         this.resetTaskForm();
+    }
+
+    /* ── Task deletion modal ── */
+    openDeleteModal() {
+        this.delGrid.innerHTML = '';
+        for (let i = 0; i < this.maxTasks; i++) {
+            const task = this.tasks[i];
+            const slot = document.createElement('button');
+            slot.type = 'button';
+
+            if (!task) {
+                slot.className = 'del-slot empty';
+                slot.disabled = true;
+            } else {
+                slot.className = 'del-slot';
+                slot.style.background = task.color;
+                slot.title = `Delete ${task.name}`;
+                const label = document.createElement('span');
+                label.className = 'del-slot-label';
+                label.textContent = task.name;
+                const bin = document.createElement('span');
+                bin.className = 'del-slot-bin';
+                bin.textContent = '🗑';
+                slot.append(label, bin);
+                slot.addEventListener('click', () => this.handleDeleteTask(task));
+            }
+            this.delGrid.appendChild(slot);
+        }
+        this.delModalOverlay.classList.add('open');
+    }
+
+    closeDeleteModal() {
+        this.delModalOverlay.classList.remove('open');
+    }
+
+    async handleDeleteTask(task) {
+        try {
+            const res = await fetch('/api/tasks', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: task.name }),
+            });
+            if (!res.ok) return;
+            // Rebuilding buttons, jars and ball indices by hand is fiddly —
+            // a reload re-derives the whole panel cleanly from the server.
+            window.location.reload();
+        } catch {
+            // Offline / static hosting — nothing to delete against.
+        }
     }
 
     resetTaskForm() {
@@ -246,6 +317,7 @@ class Calendar {
         btn.style.background = task.color;
         btn.dataset.taskName = task.name;
         btn.dataset.taskType = task.type;
+        btn.dataset.jarIndex = this.taskCount;   // jar at this index belongs to this task
         btn.title = `${task.name} · ${task.type}`;
 
         const undoArrow = document.createElement('span');
@@ -260,9 +332,20 @@ class Calendar {
         label.className = 'dp-task-label';
         label.textContent = task.name;
 
+        const btnBall = document.createElement('span');
+        btnBall.className = 'dp-task-btn-ball';
+        btnBall.style.background = task.color;
+
         btn.appendChild(undoArrow);
         btn.appendChild(label);
-        btn.addEventListener('click', () => this.handleTaskClick(task, btn));
+        btn.appendChild(btnBall);
+        btn.addEventListener('click', () => {
+            // Re-trigger the left-to-right sweep highlight on every click.
+            btn.classList.remove('sweep');
+            void btn.offsetWidth;
+            btn.classList.add('sweep');
+            this.handleTaskClick(task, btn);
+        });
 
         blank.replaceWith(btn);
         this.fillJar(this.taskCount, task);
@@ -287,20 +370,21 @@ class Calendar {
 
     /* ── Ball physics ── */
 
-    // Ball radii (px): derived from CSS variables --ball-completion-size and --ball-repeated-size
-    ballRadius(type) {
-        // Get sizes from CSS variables
+    // Ball radius (px), scaled proportionally to the box width so balls shrink
+    // with the day-box in year view. CSS sizes are authored for a 64px box.
+    ballRadius(type, boxW) {
         const root = document.documentElement;
         const completionSize = parseFloat(getComputedStyle(root).getPropertyValue('--ball-completion-size'));
         const repeatedSize = parseFloat(getComputedStyle(root).getPropertyValue('--ball-repeated-size'));
-        return type === 'Completion' ? completionSize / 2 : repeatedSize / 2;
+        const size = type === 'Completion' ? completionSize : repeatedSize;
+        return size / 2 * ((boxW || 64) / 64);
     }
 
     // Create a ball element dropped at the top of the box (fixed y, random x).
     // Returns a physics body { el, r, x, y, vx, vy } at its spawn point.
     makeBall(dayBox, taskName, color, type) {
-        const r   = this.ballRadius(type);
         const w   = dayBox.clientWidth || 64;
+        const r   = this.ballRadius(type, w);
         const pad = PHYSICS.SPAWN_PAD;
         const span = Math.max(0, w - 2 * (pad + r));
 
@@ -308,6 +392,7 @@ class Calendar {
         el.className    = `ball ball-${type.toLowerCase()}`;
         el.dataset.task = taskName;
         el.style.background = color;
+        el.style.width = el.style.height = (2 * r) + 'px';
         dayBox.appendChild(el);
 
         const ball = {
@@ -323,28 +408,31 @@ class Calendar {
 
     // Read the balls already settled in a box back into physics bodies.
     readBoxBalls(dayBox) {
+        const w = dayBox.clientWidth || 64;
         return Array.from(dayBox.querySelectorAll('.ball')).map(el => {
             const type = el.classList.contains('ball-completion') ? 'Completion' : 'Repeated';
-            const r = this.ballRadius(type);
+            const r = this.ballRadius(type, w);
             return { el, r, x: el.offsetLeft + r, y: el.offsetTop + r, vx: 0, vy: 0 };
         });
     }
 
     // Position a ball's element from its center coordinates (render step).
     placeBall(b) {
-        b.el.style.left = (b.x - b.r) + 'px';
-        b.el.style.top  = (b.y - b.r) + 'px';
+        const half = b.half ?? b.r;   // jar balls render larger than their hitbox
+        b.el.style.left = (b.x - half) + 'px';
+        b.el.style.top  = (b.y - half) + 'px';
     }
 
     // Clamp a ball inside the box. With reflect, also bounce the velocity
     // component (COR) — clamp-and-reflect inherently prevents wall tunneling.
     clampToWalls(b, w, h, reflect) {
         const { COR, FLOOR_STICK } = PHYSICS;
-        if (b.x < b.r)          { b.x = b.r;     if (reflect) b.vx = -b.vx * COR; }
-        else if (b.x > w - b.r) { b.x = w - b.r; if (reflect) b.vx = -b.vx * COR; }
-        if (b.y < b.r)          { b.y = b.r;     if (reflect) b.vy = -b.vy * COR; }
-        else if (b.y > h - b.r) {
-            b.y = h - b.r;
+        const wr = b.wallR ?? b.r;   // jar balls sit slightly off the walls
+        if (b.x < wr)          { b.x = wr;     if (reflect) b.vx = -b.vx * COR; }
+        else if (b.x > w - wr) { b.x = w - wr; if (reflect) b.vx = -b.vx * COR; }
+        if (b.y < wr)          { b.y = wr;     if (reflect) b.vy = -b.vy * COR; }
+        else if (b.y > h - wr) {
+            b.y = h - wr;
             if (reflect) {
                 b.vy = -b.vy * COR;
                 if (Math.abs(b.vy) < FLOOR_STICK) b.vy = 0;   // settle on the floor
@@ -377,7 +465,7 @@ class Calendar {
                     const a = balls[i], c = balls[j];
                     let dx = c.x - a.x, dy = c.y - a.y;
                     let dist = Math.hypot(dx, dy);
-                    const min = a.r + c.r;
+                    const min = (a.r + c.r) * PHYSICS.COLLIDE;
                     if (dist >= min) continue;
 
                     // Coincident centers (e.g. two balls on the same spawn spot).
@@ -436,7 +524,9 @@ class Calendar {
             if (acc > PHYSICS.STEP) acc = 0;  // drop backlog after a stall
             balls.forEach(b => this.placeBall(b));
 
-            restFrames = this.boxAtRest(balls, before) ? restFrames + 1 : 0;
+            // Only judge rest on frames that actually advanced physics —
+            // a zero-substep frame has no movement but isn't "at rest".
+            if (steps > 0) restFrames = this.boxAtRest(balls, before) ? restFrames + 1 : 0;
             if (restFrames >= PHYSICS.REST_FRAMES || elapsed > PHYSICS.MAX_TIME) {
                 dayBox._raf = null;
                 return;
@@ -470,6 +560,273 @@ class Calendar {
         return fresh;
     }
 
+    /* ── Jar ball animation ── */
+
+    // Pulse the button ball, then launch it on a projectile arc into the jar.
+    launchBallToJar(task, btn) {
+        const jar = this.jars[+btn.dataset.jarIndex];
+        const jarBody = jar && jar.querySelector('.tp-jar-body');
+        const btnBall = btn.querySelector('.dp-task-btn-ball');
+        if (!jarBody || !btnBall) return;
+
+        const launch = () => {
+            const from = btnBall.getBoundingClientRect();
+            this.flyToJar(from, jarBody, task.color, null);
+
+            if (task.type === 'Completion') {
+                // One-and-done for this day: take the ball off the button.
+                btnBall.style.display = 'none';
+            } else {
+                // Fade out on press, then fade back in after a short delay.
+                btnBall.style.transition = 'opacity 0.2s ease';
+                btnBall.style.opacity = '0';
+                setTimeout(() => { btnBall.style.opacity = ''; }, 500);
+            }
+        };
+
+        if (window.gsap) {
+            gsap.timeline()
+                .to(btnBall, { scale: 1.35, duration: 0.3, ease: 'power2.out' })
+                .to(btnBall, { scale: 1, duration: 0.13, ease: 'power2.in', onComplete: launch });
+        } else {
+            setTimeout(launch, 250);
+        }
+    }
+
+    // Projectile flight in viewport coordinates from `fromRect` to the jar's
+    // top opening, gravity = PHYSICS.G. Apex is forced a fixed margin above the
+    // landing point so the ball drops down into the jar. Calls onLand when done.
+    flyToJar(fromRect, jarBody, color, onLand) {
+        const g  = PHYSICS.G;
+        const jb = jarBody.getBoundingClientRect();
+        const x0 = fromRect.left + fromRect.width  / 2;
+        const y0 = fromRect.top  + fromRect.height / 2;
+        const xt = jb.left + jb.width / 2 + (Math.random() * 2 - 1) * 15;  // ±15px scatter
+        const yt = jb.top + 11;                                            // just inside the lid
+
+        const H    = 50;                       // apex clearance above the landing point
+        const rise = Math.max(1, y0 - (yt - H));
+        const T    = Math.sqrt(2 * rise / g) + Math.sqrt(2 * H / g);
+        const vy   = -Math.sqrt(2 * g * rise);
+        const vx   = (xt - x0) / T;
+
+        const ball = document.createElement('div');
+        ball.className = 'flight-ball';
+        ball.style.background = color;
+        document.body.appendChild(ball);
+
+        let t = 0, last = performance.now();
+        const tick = (now) => {
+            let dt = (now - last) / 1000; last = now;
+            if (dt > 0.05) dt = 0.05;
+            t += dt;
+            if (t >= T) {
+                ball.remove();
+                this.dropIntoJar(jarBody, color, xt, yt, vx);
+                if (onLand) onLand();
+                return;
+            }
+            ball.style.left = (x0 + vx * t - 10) + 'px';
+            ball.style.top  = (y0 + vy * t + 0.5 * g * t * t - 10) + 'px';
+            requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+    }
+
+    // Add one ball at the jar opening (mapped from screen X) and settle the jar.
+    // Jar balls live in their own array, so they never collide with day-box balls.
+    dropIntoJar(jarBody, color, screenX, screenY, vx = 0) {
+        const jb = jarBody.getBoundingClientRect();
+        const localX = Math.min(jarBody.clientWidth - 10, Math.max(10, screenX - jb.left));
+
+        const balls = this.readJarBalls(jarBody);
+        const fresh = this.makeJarBall(jarBody, color, localX, 10);
+        fresh.vx = vx;   // carry the launch's horizontal velocity into the jar
+        balls.push(fresh);
+        this.simulateBox(jarBody, balls, jarBody.clientWidth, jarBody.clientHeight);
+
+        // Every JAR_CAP completions, the jar fills, celebrates and empties.
+        if (jarBody.querySelectorAll('.jar-ball').length >= JAR_CAP) {
+            this.completeJar(jarBody.closest('.tp-jar'), jarBody, color);
+        }
+    }
+
+    // Jar hit its cap: flood it bottom-to-top in the task color, show "Jar
+    // Complete" with confetti, then drain top-to-bottom and clear the balls.
+    completeJar(jar, jarBody, color) {
+        if (jarBody._completing) return;            // ignore re-entry while animating
+        jarBody._completing = true;
+        if (jarBody._raf) { cancelAnimationFrame(jarBody._raf); jarBody._raf = null; }
+
+        const fill = document.createElement('div');
+        fill.className = 'jar-fill';
+        fill.style.background = color;
+        jarBody.appendChild(fill);
+
+        const label = document.createElement('div');
+        label.className = 'jar-complete-text';
+        label.textContent = 'Jar Complete!';
+        jarBody.appendChild(label);
+
+        requestAnimationFrame(() => { fill.classList.add('full'); label.classList.add('show'); });
+        this.confettiBurst(jar, color);
+
+        setTimeout(() => {
+            label.classList.remove('show');
+            fill.classList.remove('full');          // height -> 0, draining top-to-bottom
+            jarBody.querySelectorAll('.jar-ball').forEach(b => {
+                b.style.transition = 'opacity 0.4s ease';
+                b.style.opacity = '0';
+            });
+            setTimeout(() => {
+                jarBody.querySelectorAll('.jar-ball').forEach(b => b.remove());
+                fill.remove();
+                label.remove();
+                jarBody._completing = false;
+            }, 650);
+        }, JAR_HOLD);
+    }
+
+    // A small confetti burst from the centre of the jar.
+    confettiBurst(jar, color) {
+        const rect = jar.getBoundingClientRect();
+        const cx = rect.left + rect.width / 2;
+        const cy = rect.top + rect.height / 2;
+        const colors = [color, '#ffd34d', '#4dd2ff', '#ff6b6b', '#7cfc9b'];
+        for (let i = 0; i < 24; i++) {
+            const p = document.createElement('div');
+            p.className = 'confetti';
+            p.style.background = colors[i % colors.length];
+            document.body.appendChild(p);
+
+            const ang = Math.random() * Math.PI * 2;
+            const speed = 120 + Math.random() * 180;
+            let vx = Math.cos(ang) * speed;
+            let vy = Math.sin(ang) * speed - 140;   // bias the burst upward
+            let x = cx, y = cy, t = 0, last = performance.now();
+            const tick = (now) => {
+                const dt = Math.min(0.05, (now - last) / 1000); last = now; t += dt;
+                vy += 700 * dt;
+                x += vx * dt; y += vy * dt;
+                p.style.left = (x - 4) + 'px';
+                p.style.top  = (y - 4) + 'px';
+                p.style.transform = `rotate(${t * 540}deg)`;
+                p.style.opacity = String(Math.max(0, 1 - t / 1.2));
+                if (t >= 1.2) { p.remove(); return; }
+                requestAnimationFrame(tick);
+            };
+            requestAnimationFrame(tick);
+        }
+    }
+
+    makeJarBall(jarBody, color, x, y) {
+        const el = document.createElement('div');
+        el.className = 'jar-ball';
+        el.style.background = color;
+        jarBody.appendChild(el);
+        const b = { el, r: JAR_BALL_R, half: JAR_BALL_HALF, wallR: JAR_WALL_R, x, y, vx: 0, vy: 0 };
+        this.placeBall(b);
+        return b;
+    }
+
+    // Fade out the most recent jar ball, then let the rest resettle.
+    removeJarBall(btn) {
+        const jar = this.jars[+btn.dataset.jarIndex];
+        const jarBody = jar && jar.querySelector('.tp-jar-body');
+        if (!jarBody) return;
+        if (jarBody._raf) { cancelAnimationFrame(jarBody._raf); jarBody._raf = null; }
+
+        const balls = Array.from(jarBody.querySelectorAll('.jar-ball'));
+        const gone = balls.pop();
+        if (!gone) return;
+
+        gone.style.transition = 'opacity 0.3s ease';
+        gone.style.opacity = '0';
+        setTimeout(() => gone.remove(), 300);
+
+        // Settle the survivors into the gap (skip the fading one).
+        const pile = this.readJarBalls(jarBody).filter(b => b.el !== gone);
+        if (pile.length) {
+            this.simulateBox(jarBody, pile, jarBody.clientWidth, jarBody.clientHeight);
+        }
+    }
+
+    // Load-in animation: instead of placing balls instantly, drop them all into
+    // place after a delay. Day-box balls spawn from their usual point (staggered
+    // so they don't overlap); jar balls fall from the top of the screen.
+    dropInBalls() {
+        const card = this.cards[this.selectedMonth];
+        if (card) {
+            card.querySelectorAll('.cell:not(.other)').forEach(cell => {
+                const dayNum  = parseInt(cell.querySelector('.num').textContent);
+                const dateStr = this.dateKey(dayNum, this.selectedMonth, this.selectedYear);
+                const dayData = this.completions[dateStr];
+                if (!dayData) return;
+                const dayBox = cell.querySelector('.day-box');
+
+                let k = 0;
+                Object.entries(dayData).forEach(([taskName, count]) => {
+                    const task = this.tasks.find(t => t.name === taskName);
+                    if (!task || !count) return;
+                    for (let i = 0; i < count; i++) {
+                        setTimeout(() => this.spawnAndSimulate(dayBox, taskName, task.color, task.type),
+                                   (k++) * PHYSICS.LOAD_STAGGER);
+                    }
+                });
+            });
+        }
+
+        this.tasks.forEach((task, ti) => {
+            const total = Object.values(this.completions)
+                .reduce((sum, day) => sum + (day[task.name] || 0), 0);
+            const load = total % JAR_CAP;   // a completed jar resets, so only show the remainder
+            if (!load) return;
+            const jarBody = this.jars[ti]?.querySelector('.tp-jar-body');
+            if (!jarBody) return;
+            for (let k = 0; k < load; k++) {
+                setTimeout(() => this.dropFromTop(jarBody, task.color), k * PHYSICS.LOAD_STAGGER);
+            }
+        });
+    }
+
+    // One jar ball falling straight down from the top of the screen into the jar
+    // opening (zero horizontal velocity, small random x), then it joins the pile.
+    dropFromTop(jarBody, color) {
+        const g  = PHYSICS.G;
+        const jb = jarBody.getBoundingClientRect();
+        const xt = jb.left + jb.width / 2 + (Math.random() * 2 - 1) * 15;
+        const yt = jb.top + 11;
+
+        const ball = document.createElement('div');
+        ball.className = 'flight-ball';
+        ball.style.background = color;
+        document.body.appendChild(ball);
+
+        let last = performance.now(), y = 0, vy = 0;
+        const tick = (now) => {
+            let dt = (now - last) / 1000; last = now;
+            if (dt > 0.05) dt = 0.05;
+            vy += g * dt;
+            y  += vy * dt;
+            if (y >= yt) {
+                ball.remove();
+                this.dropIntoJar(jarBody, color, xt, yt, 0);
+                return;
+            }
+            ball.style.left = (xt - 10) + 'px';
+            ball.style.top  = (y - 10) + 'px';
+            requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+    }
+
+    readJarBalls(jarBody) {
+        return Array.from(jarBody.querySelectorAll('.jar-ball')).map(el => ({
+            el, r: JAR_BALL_R, half: JAR_BALL_HALF, wallR: JAR_WALL_R,
+            x: el.offsetLeft + JAR_BALL_HALF, y: el.offsetTop + JAR_BALL_HALF, vx: 0, vy: 0,
+        }));
+    }
+
     /* ── Task click / undo ── */
 
     handleTaskClick(task, btn) {
@@ -480,26 +837,33 @@ class Calendar {
         const dayBox  = this.selectedCell.querySelector('.day-box');
 
         if (!this.completions[dateStr]) this.completions[dateStr] = {};
-        if (!this.completions[dateStr][task.name]) this.completions[dateStr][task.name] = [];
-        this.completions[dateStr][task.name].push(null);   // count only; positions are re-dropped
+        this.completions[dateStr][task.name] = (this.completions[dateStr][task.name] || 0) + 1;
 
         const fresh = this.spawnAndSimulate(dayBox, task.name, task.color, task.type);
         btn.classList.add('has-balls');
+        this.launchBallToJar(task, btn);
 
         if (task.type === 'Completion') {
             btn.classList.add('done');
-            btn.querySelector('.dp-task-label').textContent = '✓';
+            // Fade the task name out immediately, then fade the checkmark in.
+            const label = btn.querySelector('.dp-task-label');
+            label.style.opacity = '0';
+            setTimeout(() => {
+                if (!btn.classList.contains('done')) return;  // undone meanwhile
+                label.textContent = '✓';
+                requestAnimationFrame(() => { label.style.opacity = ''; });
+            }, 500);
         }
 
         fetch('/api/completions/add', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ date: dateStr, taskName: task.name, pos: null }),
+            body: JSON.stringify({ date: dateStr, taskName: task.name }),
         }).catch(() => {
             // Rollback on network failure
-            this.completions[dateStr][task.name].pop();
+            this.completions[dateStr][task.name]--;
             fresh.el.remove();
-            const remaining = this.completions[dateStr]?.[task.name]?.length || 0;
+            const remaining = this.completions[dateStr]?.[task.name] || 0;
             btn.classList.toggle('has-balls', remaining > 0);
             if (task.type === 'Completion') {
                 btn.classList.remove('done');
@@ -511,11 +875,11 @@ class Calendar {
     handleUndo(task, btn) {
         if (!this.selectedCell || !this.selectedDateStr) return;
         const dateStr = this.selectedDateStr;
-        const entries = this.completions[dateStr]?.[task.name];
-        if (!entries || !entries.length) return;
+        const count = this.completions[dateStr]?.[task.name];
+        if (!count) return;
 
         const dayBox = this.selectedCell.querySelector('.day-box');
-        this.completions[dateStr][task.name].pop();
+        this.completions[dateStr][task.name]--;
 
         // Each entry maps to one ball — remove the most recent of this task.
         if (dayBox._raf) { cancelAnimationFrame(dayBox._raf); dayBox._raf = null; }
@@ -529,19 +893,24 @@ class Calendar {
             this.settleBox(dayBox, pile, dayBox.clientWidth || 64, dayBox.clientHeight || 64);
         }
 
-        if (!this.completions[dateStr][task.name].length) {
+        // Fade away one ball from the matching jar.
+        this.removeJarBall(btn);
+
+        if (this.completions[dateStr][task.name] <= 0) {
             delete this.completions[dateStr][task.name];
             if (!Object.keys(this.completions[dateStr]).length) {
                 delete this.completions[dateStr];
             }
         }
 
-        const remaining = this.completions[dateStr]?.[task.name]?.length || 0;
+        const remaining = this.completions[dateStr]?.[task.name] || 0;
         btn.classList.toggle('has-balls', remaining > 0);
 
         if (task.type === 'Completion') {
             btn.classList.remove('done');
             btn.querySelector('.dp-task-label').textContent = task.name;
+            const btnBall = btn.querySelector('.dp-task-btn-ball');
+            if (btnBall) btnBall.style.display = '';   // task open again -> ball returns
         }
 
         fetch('/api/completions/remove', {
@@ -562,23 +931,26 @@ class Calendar {
             const taskName = btn.dataset.taskName;
             const taskType = btn.dataset.taskType;
             const label    = btn.querySelector('.dp-task-label');
-            const count    = dayData[taskName]?.length || 0;
+            const btnBall  = btn.querySelector('.dp-task-btn-ball');
+            const count    = dayData[taskName] || 0;
 
             btn.classList.toggle('has-balls', count > 0);
 
             if (taskType === 'Completion') {
-                if (count >= 1) {
-                    btn.classList.add('done');
-                    if (label) label.textContent = '✓';
-                } else {
-                    btn.classList.remove('done');
-                    if (label) label.textContent = taskName;
-                }
+                const done = count >= 1;
+                btn.classList.toggle('done', done);
+                if (label) label.textContent = done ? '✓' : taskName;
+                // Already completed for this day -> no ball on the button.
+                if (btnBall) btnBall.style.display = done ? 'none' : '';
             }
         });
     }
 
     /* ── Ball rendering ── */
+
+    renderBallsForYear(year) {
+        for (let m = 0; m < 12; m++) this.renderBallsForMonth(m, year);
+    }
 
     renderBallsForMonth(m, year) {
         const card = this.cards[m];
@@ -597,10 +969,10 @@ class Calendar {
             // Re-drop one ball per stored entry (positions are not persisted),
             // then settle the whole box synchronously into a pile.
             const balls = [];
-            Object.entries(dayData).forEach(([taskName, entries]) => {
+            Object.entries(dayData).forEach(([taskName, count]) => {
                 const task = this.tasks.find(t => t.name === taskName);
-                if (!task || !entries.length) return;
-                for (let i = 0; i < entries.length; i++) {
+                if (!task || !count) return;
+                for (let i = 0; i < count; i++) {
                     balls.push(this.makeBall(dayBox, taskName, task.color, task.type));
                 }
             });
@@ -815,6 +1187,7 @@ class Calendar {
             this.container.classList.remove('mode-month');
             this.container.classList.add('mode-year');
             this.updateTitles();
+            this.renderBallsForYear(this.selectedYear);
         });
     }
 
