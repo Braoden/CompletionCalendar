@@ -1075,3 +1075,113 @@ body {
     /* Keep the month-view horizontal gap reasonable on small screens */
     .mode-month .m-card.is-zoomed .m-days { column-gap: 8px; }
 }
+
+/* ── "View Jars" button + shelf page ── */
+.view-jars-btn {
+    display: block;
+    margin: 24px auto 0;
+    margin-top: 40px;
+    padding: 10px 22px;
+    border: 1px solid #2f6394;
+    border-radius: 8px;
+    background: #21486a;
+    color: #d6ecfb;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+.view-jars-btn:hover { background: #2a5a86; }
+
+/* Fade the calendar (and floating buttons) out while the shelf is open. */
+.app-wrapper,
+.add-task-btn,
+.del-task-btn {
+    transition: opacity 0.3s ease;
+}
+body.shelf-open .app-wrapper,
+body.shelf-open .add-task-btn,
+body.shelf-open .del-task-btn {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.jars-view {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    background: #0a1722;
+    overflow: auto;
+    padding: 64px 48px 48px;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+.jars-view.open { opacity: 1; visibility: visible; }
+
+.jars-back-btn {
+    position: absolute;
+    top: 24px;
+    left: 24px;
+    padding: 8px 16px;
+    border: 1px solid #2f6394;
+    border-radius: 8px;
+    background: transparent;
+    color: #d6ecfb;
+    font: inherit;
+    cursor: pointer;
+}
+.jars-back-btn:hover { background: #21486a; }
+
+.shelves-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+    gap: 36px 56px;
+    max-width: 1260px;
+    margin: 140px auto 0;
+}
+
+.shelf {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.shelf-jars {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 28px;
+    height: 162px;
+    transform: scale(0.9);
+    transform-origin: bottom center;
+}
+
+/* Reuse the main-page jar look, but drop the task-panel grid stagger/height. */
+.shelf-jar.tp-jar {
+    transform: none;
+    height: auto;
+    margin: 0;
+}
+
+.shelf-plank {
+    height: 22px;
+    border-radius: 3px;
+    background:
+        repeating-linear-gradient(90deg,
+            rgba(90, 54, 16, 0) 0 7px,
+            rgba(90, 54, 16, 0.10) 7px 8px),
+        linear-gradient(#e0ab69, #c98e4e);
+    box-shadow: 0 10px 16px rgba(0, 0, 0, 0.45),
+                inset 0 2px 0 rgba(255, 255, 255, 0.30),
+                inset 0 -3px 4px rgba(90, 54, 16, 0.35);
+}
+
+.shelf-label {
+    align-self: flex-start;
+    margin-top: 10px;
+    font-weight: 600;
+    color: #e8c79a;
+    letter-spacing: 0.2px;
+}

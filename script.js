@@ -67,6 +67,7 @@ class Calendar {
         this.updateTitles();
 
         Promise.all([this.loadTasks(), this.loadCompletions()]).then(() => {
+            this.cards[this.selectedMonth].querySelector('.cell.today')?.click();
             setTimeout(() => this.dropInBalls(), PHYSICS.LOAD_DELAY);
         });
     }
@@ -100,6 +101,11 @@ class Calendar {
         this.delCancelBtn    = document.getElementById('delCancelBtn');
 
         this.jars = Array.from(document.querySelectorAll('.tp-jar'));
+
+        this.viewJarsBtn = document.getElementById('viewJarsBtn');
+        this.jarsBackBtn = document.getElementById('jarsBackBtn');
+        this.jarsView    = document.getElementById('jarsView');
+        this.shelvesGrid = document.getElementById('shelvesGrid');
     }
 
     attachEventListeners() {
@@ -134,6 +140,9 @@ class Calendar {
                 this.taskColorPicker.value = this.taskColorInput.value;
             }
         });
+
+        this.viewJarsBtn.addEventListener('click', () => this.openJarsView());
+        this.jarsBackBtn.addEventListener('click', () => this.closeJarsView());
 
         this.taskTypeToggle.querySelectorAll('.tm-toggle-opt').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -755,6 +764,7 @@ class Calendar {
     // place after a delay. Day-box balls spawn from their usual point (staggered
     // so they don't overlap); jar balls fall from the top of the screen.
     dropInBalls() {
+        this.loadTimers = this.loadTimers || [];
         const card = this.cards[this.selectedMonth];
         if (card) {
             card.querySelectorAll('.cell:not(.other)').forEach(cell => {
@@ -769,8 +779,9 @@ class Calendar {
                     const task = this.tasks.find(t => t.name === taskName);
                     if (!task || !count) return;
                     for (let i = 0; i < count; i++) {
-                        setTimeout(() => this.spawnAndSimulate(dayBox, taskName, task.color, task.type),
-                                   (k++) * PHYSICS.LOAD_STAGGER);
+                        this.loadTimers.push(setTimeout(
+                            () => this.spawnAndSimulate(dayBox, taskName, task.color, task.type),
+                            (k++) * PHYSICS.LOAD_STAGGER));
                     }
                 });
             });
@@ -784,9 +795,113 @@ class Calendar {
             const jarBody = this.jars[ti]?.querySelector('.tp-jar-body');
             if (!jarBody) return;
             for (let k = 0; k < load; k++) {
-                setTimeout(() => this.dropFromTop(jarBody, task.color), k * PHYSICS.LOAD_STAGGER);
+                this.loadTimers.push(setTimeout(
+                    () => this.dropFromTop(jarBody, task.color), k * PHYSICS.LOAD_STAGGER));
             }
         });
+    }
+
+    /* ── "View Jars" shelf page ── */
+
+    // Show the shelves view, then build it on the next frame so jar bodies have
+    // real layout dimensions (settleBox reads clientWidth/clientHeight).
+    openJarsView() {
+        this.stopBallSpawn();              // halt any in-progress load-in drop
+        document.body.classList.add('shelf-open');   // fade out everything but the shelf
+        this.jarsView.classList.add('open');
+        setTimeout(() => this.buildShelves(), 0);
+    }
+
+    // Return to the calendar: fade the main page back in and replay the drop-in.
+    closeJarsView() {
+        this.jarsView.classList.remove('open');
+        document.body.classList.remove('shelf-open');
+        this.dropInBalls();
+    }
+
+    // Cancel pending load-in timers, stop running pile simulations, and clear
+    // every ball so dropInBalls can replay from a clean slate.
+    stopBallSpawn() {
+        (this.loadTimers || []).forEach(clearTimeout);
+        this.loadTimers = [];
+        document.querySelectorAll('.flight-ball').forEach(b => b.remove());
+        document.querySelectorAll('.day-box, .tp-jar-body').forEach(box => {
+            if (box._raf) { cancelAnimationFrame(box._raf); box._raf = null; }
+        });
+        document.querySelectorAll('.ball, .jar-ball').forEach(b => b.remove());
+    }
+
+    // Total completions ever logged for a task, across all days.
+    taskTotal(name) {
+        return Object.values(this.completions)
+            .reduce((sum, day) => sum + (day[name] || 0), 0);
+    }
+
+    // 6 shelves (2x3). Each task gets one filled jar per completed JAR_CAP plus
+    // one current jar holding the remainder. Shelves past the task count stay bare.
+    buildShelves() {
+        this.shelvesGrid.innerHTML = '';
+        for (let i = 0; i < 6; i++) {
+            const shelf = document.createElement('div');
+            shelf.className = 'shelf';
+
+            const jarsRow = document.createElement('div');
+            jarsRow.className = 'shelf-jars';
+            const plank = document.createElement('div');
+            plank.className = 'shelf-plank';
+            shelf.append(jarsRow, plank);
+
+            const task = this.tasks[i];
+            if (task) {
+                const total = this.taskTotal(task.name);
+                const counts = [];
+                for (let f = 0; f < Math.floor(total / JAR_CAP); f++) counts.push(JAR_CAP);
+                counts.push(total % JAR_CAP);   // current jar (may be 0 = empty)
+                // ponytail: settleBox is O(n²)·iters per jar; fine for realistic
+                // completion counts. Cap jar count if a task ever racks up hundreds.
+                counts.forEach(n => jarsRow.appendChild(this.makeShelfJar(task.color, n)));
+
+                const label = document.createElement('div');
+                label.className = 'shelf-label';
+                label.textContent = `${task.name}: ${total}`;
+                shelf.appendChild(label);
+            }
+            this.shelvesGrid.appendChild(shelf);
+        }
+    }
+
+    // One jar with n settled balls, reusing the main-page jar markup, styling
+    // and physics so it looks identical.
+    makeShelfJar(color, n) {
+        const jar = document.createElement('div');
+        jar.className = 'tp-jar shelf-jar' + (n > 0 ? ' filled' : '');
+        jar.innerHTML = '<span class="tp-jar-lid"></span><span class="tp-jar-body"></span>';
+        const body = jar.querySelector('.tp-jar-body');
+        if (n >= JAR_CAP) {
+            // Completed jar: solid task-color fill, no individual balls.
+            jar.classList.add('complete');
+            body.style.background = color;
+            return jar;
+        }
+        if (n > 0) {
+            // Static packed rows from the bottom up — physics settling 50 balls
+            // synchronously freezes the renderer, and a neat pile reads as "full".
+            const w = body.clientWidth || 128, h = body.clientHeight || 156;
+            const d = JAR_BALL_HALF * 2;                 // ball diameter
+            const wall = JAR_BALL_HALF * 0.55;           // inset so balls sit clear of the jar walls
+            const usable = w - 2 * wall;
+            const cols = Math.max(1, Math.round(usable / d));
+            const step = usable / cols;
+            for (let k = 0; k < n; k++) {
+                const row = Math.floor(k / cols), col = k % cols;
+                const offset = (row % 2) ? step / 2 : 0;  // hex-ish stagger
+                let x = wall + col * step + step / 2 + offset;
+                if (x > w - wall) x -= step;              // wrap the staggered overflow
+                const y = h - JAR_BALL_HALF - row * (d - 2);
+                this.makeJarBall(body, color, x, y);
+            }
+        }
+        return jar;
     }
 
     // One jar ball falling straight down from the top of the screen into the jar
@@ -1226,6 +1341,8 @@ class Calendar {
     changeYear(delta) {
         this.selectedYear += delta;
         this.buildGrids(this.selectedYear);
+        if (this.mode === 'year') this.renderBallsForYear(this.selectedYear);
+        else                      this.renderBallsForMonth(this.selectedMonth, this.selectedYear);
         this.updateTitles();
     }
 
