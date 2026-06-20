@@ -54,7 +54,3 @@ script.js    Front-end logic (calendar, ball physics, jars, shelf view)
 server.js    Loopback HTTP server: static files + tasks/completions API
 main.js      Electron entry point (loads the local server in a window)
 ```
-
-## License
-
-MIT
