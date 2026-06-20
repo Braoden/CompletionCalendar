@@ -8,15 +8,44 @@
 </head>
 <body>
     <button class="add-task-btn" id="addTaskBtn" aria-label="Add task">+  Add Task</button>
-    <button class="del-task-btn" id="delTaskBtn" aria-label="Delete task">🗑  Delete Task</button>
+    <button class="del-task-btn" id="delTaskBtn" aria-label="Edit tasks">✏  Edit Tasks</button>
 
     <div class="task-modal-overlay" id="delModalOverlay">
         <div class="task-modal" role="dialog" aria-modal="true" aria-labelledby="delModalTitle">
-            <h2 class="tm-title" id="delModalTitle">Delete a Task</h2>
+            <h2 class="tm-title" id="delModalTitle">Edit Tasks</h2>
+            <p class="tm-hint">Click a task to edit it, or drag to reorder.</p>
             <div class="del-grid" id="delGrid"></div>
             <div class="tm-actions">
                 <button type="button" class="tm-btn tm-cancel" id="delCancelBtn">Close</button>
             </div>
+        </div>
+    </div>
+
+    <div class="task-modal-overlay" id="editTaskModalOverlay">
+        <div class="task-modal" role="dialog" aria-modal="true" aria-labelledby="editTaskTitle">
+            <h2 class="tm-title" id="editTaskTitle">Edit Task</h2>
+            <form id="editTaskForm" novalidate>
+                <div class="tm-field">
+                    <label class="tm-label" for="editTaskName">Name</label>
+                    <input class="tm-input" type="text" id="editTaskName" autocomplete="off" placeholder="Task name">
+                    <span class="tm-error" id="editTaskNameError"></span>
+                </div>
+
+                <div class="tm-field">
+                    <label class="tm-label" for="editTaskColor">Color</label>
+                    <div class="tm-color-row">
+                        <input class="tm-input tm-color-text" type="text" id="editTaskColor" autocomplete="off" placeholder="#23a8f2" maxlength="7">
+                        <input class="tm-color-swatch" type="color" id="editTaskColorPicker" value="#23a8f2" aria-label="Pick color">
+                    </div>
+                    <span class="tm-error" id="editTaskColorError"></span>
+                </div>
+
+                <div class="tm-actions">
+                    <button type="button" class="tm-btn tm-delete" id="editTaskDeleteBtn">🗑 Delete</button>
+                    <button type="button" class="tm-btn tm-cancel" id="editTaskCancelBtn">Cancel</button>
+                    <button type="submit" class="tm-btn tm-submit">Save</button>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -115,12 +144,10 @@
     </div>
 
     <div class="jars-view" id="jarsView">
-        <button class="jars-back-btn" id="jarsBackBtn">← Back to Calendar</button>
+        <button class="jars-back-btn" id="jarsBackBtn">◄ Back to Calendar</button>
         <div class="shelves-grid" id="shelvesGrid"></div>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/Flip.min.js"></script>
     <script src="script.js"></script>
 </body>
 </html>

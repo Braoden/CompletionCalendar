@@ -30,8 +30,6 @@ const JAR_WALL_R    = JAR_BALL_R + 2.5;   // wall radius (px) — insets jar wal
 
 class Calendar {
     constructor() {
-        if (window.gsap && window.Flip) gsap.registerPlugin(Flip);
-
         this.today = new Date();
         this.currentMonth = this.today.getMonth();
         this.currentYear  = this.today.getFullYear();
@@ -55,7 +53,6 @@ class Calendar {
 
         this.tasks = [];
         this.completions = {};
-        this.selectedDay = null;
         this.selectedDateStr = null;
         this.selectedCell = null;
 
@@ -100,6 +97,17 @@ class Calendar {
         this.delGrid         = document.getElementById('delGrid');
         this.delCancelBtn    = document.getElementById('delCancelBtn');
 
+        this.editTaskModalOverlay = document.getElementById('editTaskModalOverlay');
+        this.editTaskTitle        = document.getElementById('editTaskTitle');
+        this.editTaskForm         = document.getElementById('editTaskForm');
+        this.editTaskName         = document.getElementById('editTaskName');
+        this.editTaskColor        = document.getElementById('editTaskColor');
+        this.editTaskColorPicker  = document.getElementById('editTaskColorPicker');
+        this.editTaskNameError    = document.getElementById('editTaskNameError');
+        this.editTaskColorError   = document.getElementById('editTaskColorError');
+        this.editTaskCancelBtn    = document.getElementById('editTaskCancelBtn');
+        this.editTaskDeleteBtn    = document.getElementById('editTaskDeleteBtn');
+
         this.jars = Array.from(document.querySelectorAll('.tp-jar'));
 
         this.viewJarsBtn = document.getElementById('viewJarsBtn');
@@ -125,10 +133,26 @@ class Calendar {
         });
         this.taskForm.addEventListener('submit', (e) => this.handleTaskSubmit(e));
 
-        this.delTaskBtn.addEventListener('click', () => this.openDeleteModal());
+        this.delTaskBtn.addEventListener('click', () => this.openEditModal());
         this.delCancelBtn.addEventListener('click', () => this.closeDeleteModal());
         this.delModalOverlay.addEventListener('click', (e) => {
             if (e.target === this.delModalOverlay) this.closeDeleteModal();
+        });
+
+        this.editTaskCancelBtn.addEventListener('click', () => this.closeEditTaskModal());
+        this.editTaskModalOverlay.addEventListener('click', (e) => {
+            if (e.target === this.editTaskModalOverlay) this.closeEditTaskModal();
+        });
+        this.editTaskForm.addEventListener('submit', (e) => this.handleEditSubmit(e));
+
+        this.editTaskColorPicker.addEventListener('input', () => {
+            this.editTaskColor.value = this.editTaskColorPicker.value;
+            this.clearFieldError(this.editTaskColor, this.editTaskColorError);
+        });
+        this.editTaskColor.addEventListener('input', () => {
+            if (this.isValidHex(this.editTaskColor.value)) {
+                this.editTaskColorPicker.value = this.editTaskColor.value;
+            }
         });
 
         this.taskColorPicker.addEventListener('input', () => {
@@ -166,30 +190,30 @@ class Calendar {
         this.resetTaskForm();
     }
 
-    /* ── Task deletion modal ── */
-    openDeleteModal() {
+    /* ── Edit-tasks modal ── */
+    openEditModal() {
         this.delGrid.innerHTML = '';
-        for (let i = 0; i < this.maxTasks; i++) {
-            const task = this.tasks[i];
+        this.tasks.forEach((task) => {
             const slot = document.createElement('button');
             slot.type = 'button';
-
-            if (!task) {
-                slot.className = 'del-slot empty';
-                slot.disabled = true;
-            } else {
-                slot.className = 'del-slot';
-                slot.style.background = task.color;
-                slot.title = `Delete ${task.name}`;
-                const label = document.createElement('span');
-                label.className = 'del-slot-label';
-                label.textContent = task.name;
-                const bin = document.createElement('span');
-                bin.className = 'del-slot-bin';
-                bin.textContent = '🗑';
-                slot.append(label, bin);
-                slot.addEventListener('click', () => this.handleDeleteTask(task));
-            }
+            slot.className = 'del-slot';
+            slot.draggable = true;
+            slot.style.background = task.color;
+            slot.dataset.taskName = task.name;
+            slot.title = `Edit ${task.name}`;
+            const label = document.createElement('span');
+            label.className = 'del-slot-label';
+            label.textContent = task.name;
+            slot.appendChild(label);
+            slot.addEventListener('click', () => this.openEditTaskModal(task));
+            this.addDragHandlers(slot);
+            this.delGrid.appendChild(slot);
+        });
+        for (let i = this.tasks.length; i < this.maxTasks; i++) {
+            const slot = document.createElement('button');
+            slot.type = 'button';
+            slot.className = 'del-slot empty';
+            slot.disabled = true;
             this.delGrid.appendChild(slot);
         }
         this.delModalOverlay.classList.add('open');
@@ -197,6 +221,110 @@ class Calendar {
 
     closeDeleteModal() {
         this.delModalOverlay.classList.remove('open');
+    }
+
+    // Native drag-and-drop reorder: as a slot is dragged over a sibling, move it
+    // there in the DOM; on drop, persist the new order to the server.
+    addDragHandlers(slot) {
+        slot.addEventListener('dragstart', () => slot.classList.add('dragging'));
+        slot.addEventListener('dragend', () => {
+            slot.classList.remove('dragging');
+            this.persistOrder();
+        });
+        slot.addEventListener('dragover', (e) => e.preventDefault());
+        slot.addEventListener('dragenter', (e) => {
+            e.preventDefault();
+            const dragging = this.delGrid.querySelector('.dragging');
+            if (!dragging || dragging === slot || slot.classList.contains('empty')) return;
+            const slots = [...this.delGrid.children];
+            if (slots.indexOf(dragging) < slots.indexOf(slot)) slot.after(dragging);
+            else slot.before(dragging);
+        });
+    }
+
+    async persistOrder() {
+        const order = [...this.delGrid.querySelectorAll('.del-slot:not(.empty)')]
+            .map(s => s.dataset.taskName);
+        const current = this.tasks.map(t => t.name);
+        if (order.join(' ') === current.join(' ')) return;   // unchanged
+        try {
+            const res = await fetch('/api/tasks', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ order }),
+            });
+            // Reload re-derives buttons, jars and ball indices in the new order.
+            if (res.ok) window.location.reload();
+        } catch {
+            // Offline / static hosting — nothing to persist against.
+        }
+    }
+
+    /* ── Single-task edit modal ── */
+    openEditTaskModal(task) {
+        this.editingTask = task;
+        this.editTaskTitle.textContent = `Edit "${task.name}"`;
+        this.editTaskName.value  = task.name;
+        this.editTaskColor.value = task.color;
+        this.editTaskColorPicker.value = task.color;
+        this.clearFieldError(this.editTaskName, this.editTaskNameError);
+        this.clearFieldError(this.editTaskColor, this.editTaskColorError);
+        this.editTaskDeleteBtn.onclick = () => this.handleDeleteTask(task);
+        this.editTaskModalOverlay.classList.add('open');
+        this.editTaskName.focus();
+    }
+
+    closeEditTaskModal() {
+        this.editTaskModalOverlay.classList.remove('open');
+    }
+
+    async handleEditSubmit(e) {
+        e.preventDefault();
+
+        const name  = this.editTaskName.value.trim();
+        const color = this.editTaskColor.value.trim();
+        let valid = true;
+
+        if (!name) {
+            this.setFieldError(this.editTaskName, this.editTaskNameError, 'Name is required');
+            valid = false;
+        } else {
+            this.clearFieldError(this.editTaskName, this.editTaskNameError);
+        }
+
+        if (!color) {
+            this.setFieldError(this.editTaskColor, this.editTaskColorError, 'Color is required');
+            valid = false;
+        } else if (!this.isValidHex(color)) {
+            this.setFieldError(this.editTaskColor, this.editTaskColorError, 'Use a valid hex like #23a8f2');
+            valid = false;
+        } else {
+            this.clearFieldError(this.editTaskColor, this.editTaskColorError);
+        }
+
+        if (!valid) return;
+
+        try {
+            const res = await fetch('/api/tasks', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    original: this.editingTask.name,
+                    name, color, type: this.editingTask.type,
+                }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                this.setFieldError(this.editTaskName, this.editTaskNameError,
+                    data.error || 'Could not save task');
+                return;
+            }
+            // Reload re-derives buttons, jars and ball indices from the edited task.
+            window.location.reload();
+        } catch {
+            this.setFieldError(this.editTaskName, this.editTaskNameError,
+                'Could not reach the server');
+        }
     }
 
     async handleDeleteTask(task) {
@@ -331,7 +459,7 @@ class Calendar {
 
         const undoArrow = document.createElement('span');
         undoArrow.className = 'dp-task-undo';
-        undoArrow.textContent = '←';
+        undoArrow.textContent = '✖';
         undoArrow.addEventListener('click', (e) => {
             e.stopPropagation();
             this.handleUndo(task, btn);
@@ -347,6 +475,11 @@ class Calendar {
 
         btn.appendChild(undoArrow);
         btn.appendChild(label);
+        if (task.type === 'Repeated') {
+            const count = document.createElement('span');
+            count.className = 'dp-task-count';
+            btn.appendChild(count);   // shows per-day completion count, left of the ball
+        }
         btn.appendChild(btnBall);
         btn.addEventListener('click', () => {
             // Re-trigger the left-to-right sweep highlight on every click.
@@ -360,17 +493,7 @@ class Calendar {
         this.fillJar(this.taskCount, task);
         this.taskCount++;
 
-        if (window.gsap) {
-            gsap.from(btn, {
-                duration: 0.45,
-                opacity: 0,
-                y: 12,
-                scale: 0.9,
-                transformOrigin: 'center center',
-                ease: 'back.out(1.7)',
-                clearProps: 'opacity,transform',
-            });
-        }
+        btn.classList.add('pop-in');
 
         if (this.taskCount >= this.maxTasks) {
             this.addTaskBtn.disabled = true;
@@ -451,12 +574,14 @@ class Calendar {
 
     // Advance the simulation one fixed timestep: gravity, then wall + ball
     // collisions. Pure physics — no DOM access.
-    stepPhysics(balls, w, h, dt) {
-        const { G, COR, DAMP, RELAX } = PHYSICS;
+    stepPhysics(balls, w, h, dt, gy = PHYSICS.G) {
+        const { COR, DAMP, RELAX } = PHYSICS;
 
         // 1) Integrate, damp, resolve walls (velocity bounce + clamp).
+        // gy is effective vertical gravity — the jar-shake feeds it the box's
+        // acceleration so the balls go light/heavy and bounce. Default: straight down.
         for (const b of balls) {
-            b.vy += G * dt;
+            b.vy += gy * dt;
             b.vx *= DAMP;
             b.vy *= DAMP;
             b.x  += b.vx * dt;
@@ -593,13 +718,10 @@ class Calendar {
             }
         };
 
-        if (window.gsap) {
-            gsap.timeline()
-                .to(btnBall, { scale: 1.35, duration: 0.3, ease: 'power2.out' })
-                .to(btnBall, { scale: 1, duration: 0.13, ease: 'power2.in', onComplete: launch });
-        } else {
-            setTimeout(launch, 250);
-        }
+        btnBall.classList.remove('pulse');
+        void btnBall.offsetWidth;            // restart the CSS animation
+        btnBall.classList.add('pulse');
+        setTimeout(launch, 250);
     }
 
     // Projectile flight in viewport coordinates from `fromRect` to the jar's
@@ -632,6 +754,7 @@ class Calendar {
             if (t >= T) {
                 ball.remove();
                 this.dropIntoJar(jarBody, color, xt, yt, vx);
+
                 if (onLand) onLand();
                 return;
             }
@@ -788,8 +911,7 @@ class Calendar {
         }
 
         this.tasks.forEach((task, ti) => {
-            const total = Object.values(this.completions)
-                .reduce((sum, day) => sum + (day[task.name] || 0), 0);
+            const total = this.taskTotal(task.name);
             const load = total % JAR_CAP;   // a completed jar resets, so only show the remainder
             if (!load) return;
             const jarBody = this.jars[ti]?.querySelector('.tp-jar-body');
@@ -888,7 +1010,7 @@ class Calendar {
             // synchronously freezes the renderer, and a neat pile reads as "full".
             const w = body.clientWidth || 128, h = body.clientHeight || 156;
             const d = JAR_BALL_HALF * 2;                 // ball diameter
-            const wall = JAR_BALL_HALF * 0.55;           // inset so balls sit clear of the jar walls
+            const wall = JAR_BALL_HALF * 0.6;           // inset so balls sit clear of the jar walls
             const usable = w - 2 * wall;
             const cols = Math.max(1, Math.round(usable / d));
             const step = usable / cols;
@@ -942,6 +1064,7 @@ class Calendar {
         }));
     }
 
+
     /* ── Task click / undo ── */
 
     handleTaskClick(task, btn) {
@@ -957,6 +1080,11 @@ class Calendar {
         const fresh = this.spawnAndSimulate(dayBox, task.name, task.color, task.type);
         btn.classList.add('has-balls');
         this.launchBallToJar(task, btn);
+
+        if (task.type === 'Repeated') {
+            const countEl = btn.querySelector('.dp-task-count');
+            if (countEl) countEl.textContent = this.completions[dateStr][task.name];
+        }
 
         if (task.type === 'Completion') {
             btn.classList.add('done');
@@ -983,6 +1111,9 @@ class Calendar {
             if (task.type === 'Completion') {
                 btn.classList.remove('done');
                 btn.querySelector('.dp-task-label').textContent = task.name;
+            } else {
+                const countEl = btn.querySelector('.dp-task-count');
+                if (countEl) countEl.textContent = remaining > 0 ? remaining : '';
             }
         });
     }
@@ -1026,6 +1157,9 @@ class Calendar {
             btn.querySelector('.dp-task-label').textContent = task.name;
             const btnBall = btn.querySelector('.dp-task-btn-ball');
             if (btnBall) btnBall.style.display = '';   // task open again -> ball returns
+        } else {
+            const countEl = btn.querySelector('.dp-task-count');
+            if (countEl) countEl.textContent = remaining > 0 ? remaining : '';
         }
 
         fetch('/api/completions/remove', {
@@ -1057,6 +1191,9 @@ class Calendar {
                 if (label) label.textContent = done ? '✓' : taskName;
                 // Already completed for this day -> no ball on the button.
                 if (btnBall) btnBall.style.display = done ? 'none' : '';
+            } else {
+                const countEl = btn.querySelector('.dp-task-count');
+                if (countEl) countEl.textContent = count > 0 ? count : '';
             }
         });
     }
@@ -1145,7 +1282,6 @@ class Calendar {
         this.months.innerHTML = '';
         this.cards = [];
         this.selectedCell    = null;
-        this.selectedDay     = null;
         this.selectedDateStr = null;
         this.appWrapper.classList.remove('day-selected');
 
@@ -1332,7 +1468,6 @@ class Calendar {
         this.cards[m].classList.add('is-zoomed');
         this.updateTitles();
         this.selectedCell    = null;
-        this.selectedDay     = null;
         this.selectedDateStr = null;
         this.appWrapper.classList.remove('day-selected');
         this.renderBallsForMonth(m, this.selectedYear);
@@ -1358,7 +1493,6 @@ class Calendar {
         void this.dayPanel.offsetWidth;
         this.dayPanel.classList.add('reveal');
 
-        this.selectedDay     = day;
         this.selectedDateStr = this.dateKey(day, m, year);
         this.updateButtonStates(this.selectedDateStr);
     }

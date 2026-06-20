@@ -2,9 +2,35 @@
   "name": "calendar",
   "version": "1.0.0",
   "description": "A lightweight calendar and task app served by a zero-dependency Node.js server.",
-  "main": "server.js",
+  "main": "main.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "electron": "electron .",
+    "dist": "electron-builder"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^42.4.1",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.completioncalendar.app",
+    "productName": "Completion Calendar",
+    "files": [
+      "main.js",
+      "server.js",
+      "index.html",
+      "script.js",
+      "style.css"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "mac": {
+      "target": "dmg"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  }
 }

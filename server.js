@@ -12,8 +12,11 @@ const path = require('path');
 
 const PORT      = process.env.PORT || 5577;
 const ROOT      = __dirname;
-const DATA_FILE        = path.join(ROOT, 'tasks.json');
-const COMPLETIONS_FILE = path.join(ROOT, 'completions.json');
+// ponytail: DATA_DIR lets Electron point writes at a writable userData path
+// (packaged app files are read-only inside the asar). Defaults to ROOT for `node server.js`.
+const DATA_DIR  = process.env.DATA_DIR || ROOT;
+const DATA_FILE        = path.join(DATA_DIR, 'tasks.json');
+const COMPLETIONS_FILE = path.join(DATA_DIR, 'completions.json');
 const MAX_TASKS = 6;
 
 const MIME = {
@@ -36,7 +39,7 @@ function readTasks() {
 }
 
 function writeTasks(tasks) {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(tasks, null, 2), 'utf-8');
+    atomicWrite(DATA_FILE, JSON.stringify(tasks, null, 2));
 }
 
 function readCompletions() {
@@ -50,7 +53,15 @@ function readCompletions() {
 }
 
 function writeCompletions(data) {
-    fs.writeFileSync(COMPLETIONS_FILE, JSON.stringify(data, null, 2), 'utf-8');
+    atomicWrite(COMPLETIONS_FILE, JSON.stringify(data, null, 2));
+}
+
+// Write whole-file-or-nothing: write to a temp file, then rename over the
+// target. Rename is atomic, so the target is never seen half-written.
+function atomicWrite(file, contents) {
+    const tmp = file + '.tmp';
+    fs.writeFileSync(tmp, contents, 'utf-8');
+    fs.renameSync(tmp, file);
 }
 
 const isValidHex = (v) => typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v.trim());
@@ -115,6 +126,68 @@ async function handleApi(req, res) {
         tasks.push(task);
         writeTasks(tasks);
         return sendJson(res, 201, { task, tasks });
+    }
+
+    if (req.url === '/api/tasks' && req.method === 'PUT') {
+        let body;
+        try {
+            body = JSON.parse(await readBody(req) || '{}');
+        } catch {
+            return sendJson(res, 400, { error: 'Malformed JSON' });
+        }
+
+        const order = Array.isArray(body.order) ? body.order : null;
+        if (!order) return sendJson(res, 400, { error: 'Missing order' });
+
+        const tasks = readTasks();
+        const byName = new Map(tasks.map(t => [t.name, t]));
+        const reordered = order.map(n => byName.get(n)).filter(Boolean);
+        // Safety: append any task the client didn't mention, so none are lost.
+        for (const t of tasks) if (!order.includes(t.name)) reordered.push(t);
+
+        writeTasks(reordered);
+        return sendJson(res, 200, { tasks: reordered });
+    }
+
+    if (req.url === '/api/tasks' && req.method === 'PATCH') {
+        let body;
+        try {
+            body = JSON.parse(await readBody(req) || '{}');
+        } catch {
+            return sendJson(res, 400, { error: 'Malformed JSON' });
+        }
+
+        const original = typeof body.original === 'string' ? body.original.trim() : '';
+        if (!original) return sendJson(res, 400, { error: 'Missing original task name' });
+
+        const error = validateTask(body);
+        if (error) return sendJson(res, 400, { error });
+
+        const tasks = readTasks();
+        const idx = tasks.findIndex(t => t.name === original);
+        if (idx === -1) return sendJson(res, 404, { error: 'Task not found' });
+
+        const newName = body.name.trim();
+        if (newName !== original && tasks.some(t => t.name === newName)) {
+            return sendJson(res, 409, { error: 'A task with that name already exists' });
+        }
+
+        tasks[idx] = { name: newName, color: body.color.trim(), type: body.type };
+        writeTasks(tasks);
+
+        // Completions are keyed by task name — migrate them on rename.
+        if (newName !== original) {
+            const completions = readCompletions();
+            for (const date of Object.keys(completions)) {
+                if (completions[date][original] != null) {
+                    completions[date][newName] = completions[date][original];
+                    delete completions[date][original];
+                }
+            }
+            writeCompletions(completions);
+        }
+
+        return sendJson(res, 200, { task: tasks[idx], tasks });
     }
 
     if (req.url === '/api/tasks' && req.method === 'DELETE') {
@@ -231,6 +304,9 @@ const server = http.createServer((req, res) => {
     }
 });
 
-server.listen(PORT, () => {
+// Bind to loopback only: app talks to itself, so no network exposure / no firewall prompt.
+server.listen(PORT, '127.0.0.1', () => {
     console.log(`Calendar running at http://localhost:${PORT}`);
 });
+
+module.exports = { server, PORT };

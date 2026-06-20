@@ -13,9 +13,6 @@ desktop.ini
 # Editor / tooling
 .vscode/
 .idea/
-.impeccable/
-PRODUCT.md
-DESIGN.md
 
 # Local Claude settings (keep launch config out of the repo)
 .claude/
@@ -26,3 +23,4 @@ graphify-out/
 # Runtime data written by the server
 tasks.json
 completions.json
+dist/
