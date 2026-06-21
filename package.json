@@ -1,6 +1,6 @@
 {
   "name": "calendar",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A lightweight calendar and task app served by a zero-dependency Node.js server.",
   "main": "main.js",
   "scripts": {
