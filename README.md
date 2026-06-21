@@ -7,7 +7,7 @@ Zero runtime dependencies.
 
 ## Features
 
-- **Year / month / day views** with animated FLIP zoom between them
+- **Year / month / day views** with animated transition zoom between them
 - **Up to 6 tasks**, each with a name and color
 - **Two task types:**
   - *Completion* — once per day (marks done with a ✓)
@@ -23,42 +23,18 @@ Zero runtime dependencies.
 
 ## Getting started
 
-Requires [Node.js](https://nodejs.org/). No `npm install` needed to run the web app.
+To use the app, simply run the .exe file found in releases and start the app from your start menu.
 
-```bash
-node server.js
-```
+(Windows Only)
 
-Then open http://localhost:5577.
+## Tech stack
 
-### Desktop app (Electron)
-
-```bash
-npm install      # installs electron + electron-builder (dev only)
-npm run electron # run as a desktop window
-npm run dist     # build installers (win / mac / linux)
-```
-
-In the packaged app, data is written to the per-user data directory instead of
-the (read-only) app bundle.
-
-## API
-
-The server bind is **loopback only** (`127.0.0.1`) — it talks to itself.
-
-| Method   | Path                     | Description                                              |
-| -------- | ------------------------ | ------------------------------------------------------- |
-| `GET`    | `/api/tasks`             | List tasks: `{ tasks: [...] }`                          |
-| `POST`   | `/api/tasks`             | Create a task — body `{ name, color, type }` (max 6)    |
-| `PUT`    | `/api/tasks`             | Reorder — body `{ order: [name, ...] }`                 |
-| `PATCH`  | `/api/tasks`             | Edit — body `{ original, name, color, type }`           |
-| `DELETE` | `/api/tasks`             | Delete — body `{ name }` (also drops its completions)   |
-| `GET`    | `/api/completions`       | All completions, keyed by date then task name           |
-| `POST`   | `/api/completions/add`   | Log one — body `{ date, taskName }`                     |
-| `POST`   | `/api/completions/remove`| Undo one — body `{ date, taskName }`                    |
-
-`color` must be a 6-digit hex (e.g. `#23a8f2`); `type` is `"Completion"` or
-`"Repeated"`. Completions are keyed by task name and migrated automatically on rename.
+- **Vanilla JavaScript (ES6 classes)** — no framework, no build step; all UI logic lives in a single `Calendar` class
+- **Custom HTML5 + CSS3** — hand-written markup and styles, including a hand-rolled FLIP zoom animation (no animation library)
+- **Custom 2D physics** — a small fixed-timestep engine (gravity, restitution, ball-to-ball collision) driving the calendar and jar balls, rendered via `requestAnimationFrame`
+- **Node.js core `http`** — a zero-dependency loopback server for static files and the tasks/completions REST API
+- **JSON flat files** — `tasks.json` / `completions.json` for persistence (no database), written atomically
+- **Electron** — optional desktop packaging via `electron-builder`
 
 ## Data
 
@@ -78,7 +54,3 @@ script.js    Front-end logic (calendar, ball physics, jars, shelf view)
 server.js    Loopback HTTP server: static files + tasks/completions API
 main.js      Electron entry point (loads the local server in a window)
 ```
-
-## License
-
-MIT
