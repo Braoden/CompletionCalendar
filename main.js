@@ -1,4 +1,5 @@
 const { app, BrowserWindow } = require('electron');
+const path = require('path');
 
 // Persist tasks/completions in the per-user data dir, not inside the read-only asar.
 process.env.DATA_DIR = app.getPath('userData');
@@ -10,6 +11,7 @@ function createWindow() {
         width: 1100,
         height: 800,
         title: 'Completion Calendar',
+        icon: path.join(__dirname, 'build', 'icon.ico'),
     });
     win.loadURL(`http://localhost:${PORT}`);
 }
