@@ -13,7 +13,7 @@ const PHYSICS = {
                            // fall so a too-wide row can climb into a second row
     SPAWN_VX:     30,      // small random horizontal launch speed (px/s)
     REST_EPS:     5,    // per-ball px movement/frame counted as "still"
-    REST_FRAMES:  80,      // consecutive still frames before sleeping
+    REST_FRAMES:  1000,      // consecutive still frames before sleeping
     MAX_TIME:     6,       // hard stop for the animation loop (s)
     MAX_ITERS:    2000,    // hard stop for the synchronous settle
     LOAD_DELAY:   1000,    // pause (ms) before balls fall in on load
