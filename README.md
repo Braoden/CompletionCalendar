@@ -8,6 +8,8 @@
 
 Built for anyone who wants habit tracking to feel tactile instead of like a spreadsheet. Runs as a local web app or a packaged Windows desktop app. **Zero runtime dependencies** — no framework, no build step, no database, no accounts.
 
+![Completion Calendar screenshot](docs/screenshot.png)
+
 ## Features
 
 - **Tactile ball physics** — every completion drops a real ball into that day's box: gravity, bouncing, and ball-to-ball collision, settling into a pile.
@@ -31,8 +33,6 @@ node server.js
 ```
 
 That's it — the server is zero-dependency, so there's no `npm install` step to run the web app.
-
-![Completion Calendar screenshot](docs/screenshot.png)
 
 ## Project structure
 
