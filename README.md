@@ -1,56 +1,76 @@
 # Completion Calendar
 
-A calendar and habit-tracking app where completing tasks drops physics-simulated
-balls into the day they were done — and into a jar that fills, celebrates, and
-empties as you build a streak. Runs as a local web app or a packaged desktop app.
-Zero runtime dependencies.
+[![Version](https://img.shields.io/badge/version-1.0.2-blue)](package.json)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE.txt)
+[![Platform](https://img.shields.io/badge/desktop-Windows-lightgrey)](#installation--setup)
+
+> A calendar and habit-tracker where finishing a task drops a physics-simulated ball into the day you did it — and into a jar that fills, celebrates, and empties as your streak grows.
+
+Built for anyone who wants habit tracking to feel tactile instead of like a spreadsheet. Runs as a local web app or a packaged Windows desktop app. **Zero runtime dependencies** — no framework, no build step, no database, no accounts.
 
 ## Features
 
-- **Year / month / day views** with animated transition zoom between them
-- **Up to 6 tasks**, each with a name and color
-- **Two task types:**
-  - *Completion* — once per day (marks done with a ✓)
-  - *Repeated* — log as many times per day as you like (shows a per-day count)
-- **Ball physics** — each completion drops a ball into that day's box, settling
-  into a pile (gravity, bouncing, ball-to-ball collision)
-- **Jars** — every completion also flies into the task's jar; at 50 it completes
-  with a confetti burst, then drains and refills
-- **Shelf view** — see all jars on shelves, one filled jar per completed batch
-- **Per-day undo**, drag-to-reorder tasks, edit/rename/recolor, delete
-- **Optimistic UI** with rollback if a write fails
-- Data persists to local JSON files — no database, no accounts
+- **Tactile ball physics** — every completion drops a real ball into that day's box: gravity, bouncing, and ball-to-ball collision, settling into a pile.
+- **Jars that celebrate** — each completion also flies into the task's jar. Hit 50 and it bursts with confetti, drains, and refills.
+- **Shelf view** — all your jars lined up on shelves, one filled jar per completed batch — a physical-looking record of progress.
+- **Year / month / day views** with an animated zoom transition between them (hand-rolled FLIP animation, no library).
+- **Two task types** — *Completion* (once per day, ✓) and *Repeated* (log as many times a day as you want, with a per-day count).
+- **Optimistic UI** — instant updates with automatic rollback if a write fails. Plus per-day undo, drag-to-reorder, and edit/recolor/delete.
 
-## Getting started
+## Installation
 
-To use the app, simply run the .exe file found in releases and start the app from your start menu.
+**Use the app (Windows):** download the latest `.exe` from [Releases](../../releases), install, and launch from your Start menu.
 
-(Windows Only)
+**Run from source (any OS with Node.js):**
 
-## Tech stack
+```bash
+git clone https://github.com/Braoden/CompletionCalendar.git
+cd CompletionCalendar
+node server.js
+# open http://localhost:5577
+```
 
-- **Vanilla JavaScript (ES6 classes)** — no framework, no build step; all UI logic lives in a single `Calendar` class
-- **Custom HTML5 + CSS3** — hand-written markup and styles, including a hand-rolled FLIP zoom animation (no animation library)
-- **Custom 2D physics** — a small fixed-timestep engine (gravity, restitution, ball-to-ball collision) driving the calendar and jar balls, rendered via `requestAnimationFrame`
-- **Node.js core `http`** — a zero-dependency loopback server for static files and the tasks/completions REST API
-- **JSON flat files** — `tasks.json` / `completions.json` for persistence (no database), written atomically
-- **Electron** — optional desktop packaging via `electron-builder`
+That's it — the server is zero-dependency, so there's no `npm install` step to run the web app.
 
-## Data
-
-Created automatically on first write; both are gitignored:
-
-- `tasks.json` — the task list
-- `completions.json` — completions, shaped `{ "YYYY-MM-DD": { "Task name": count } }`
-
-Writes are atomic (temp file + rename) so a crash mid-write can't corrupt them.
+![Completion Calendar screenshot](docs/screenshot.png)
 
 ## Project structure
 
 ```
-index.html   Calendar markup, modals, day/task panels
-style.css    Styles
-script.js    Front-end logic (calendar, ball physics, jars, shelf view)
-server.js    Loopback HTTP server: static files + tasks/completions API
-main.js      Electron entry point (loads the local server in a window)
+CompletionCalendar/
+├── index.html   Calendar markup, modals, day/task panels
+├── style.css    All styles (hand-written)
+├── script.js    Front-end logic: calendar, ball physics, jars, shelf view
+├── server.js    Zero-dependency HTTP server: static files + tasks/completions API
+├── main.js      Electron entry point (loads the local server in a window)
+└── package.json Scripts + electron-builder config
 ```
+
+## Architecture overview
+
+- **Front end** — a single `Calendar` ES6 class in `script.js` owns all UI: view switching, task editing, and a custom fixed-timestep 2D physics engine (gravity, restitution, ball-to-ball collision) rendered via `requestAnimationFrame`.
+- **Back end** — `server.js` is a loopback (`127.0.0.1`) server built on Node's core `http` module. It serves the static files and a small REST API, and persists to flat JSON files written atomically (temp file + rename).
+- **Desktop** — `main.js` boots the same local server and points an Electron `BrowserWindow` at it. The web app and desktop app run identical code.
+
+**How the ball/jar mechanics work:** completing a task POSTs to `/api/completions/add`. The front end optimistically spawns a ball into the day's box and a ball into that task's jar; both are driven by the physics loop. When a jar reaches 50 it triggers the confetti burst and resets, recording a filled jar on the shelf.
+
+## API documentation
+
+All endpoints are served from `http://localhost:5577`.
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `GET`  | `/api/tasks` | List tasks |
+| `POST` | `/api/tasks` | Create a task |
+| `PUT`  | `/api/tasks` | Replace the task list (used by drag-reorder) |
+| `PATCH`| `/api/tasks` | Edit a task (rename / recolor) |
+| `DELETE`| `/api/tasks` | Delete a task |
+| `GET`  | `/api/completions` | Get all completions |
+| `POST` | `/api/completions/add` | Record a completion |
+| `POST` | `/api/completions/remove` | Undo a completion |
+
+## Tech stack
+
+- **Front end** — Vanilla JavaScript (ES6 classes), hand-written HTML5 + CSS3, custom FLIP zoom animation, custom 2D physics engine.
+- **Back end** — Node.js core `http` module (zero dependencies), JSON flat-file persistence.
+- **Desktop packaging** — Electron + electron-builder (dev dependencies only).
