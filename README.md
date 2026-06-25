@@ -1,8 +1,8 @@
-<p align="center">
-  <img src="build/icon.png" alt="Completion Calendar icon" width="64" align="center" />
+<h1 align="center">
+  <img src="build/icon.ico" alt="Completion Calendar icon" width="96" align="center" />
   &nbsp;
-  <strong>Completion Calendar</strong>
-</p>
+  Completion Calendar
+</h1>
 
 [![Version](https://img.shields.io/badge/version-1.0.2-blue)](package.json)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE.txt)
