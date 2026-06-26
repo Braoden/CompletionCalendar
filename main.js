@@ -10,7 +10,7 @@ function createWindow() {
     const win = new BrowserWindow({
         width: 1100,
         height: 800,
-        title: 'Completion Calendar',
+        title: 'Task Calendar',
         icon: path.join(__dirname, 'build', 'icon.ico'),
     });
     win.loadURL(`http://localhost:${PORT}`);

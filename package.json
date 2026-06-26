@@ -1,6 +1,6 @@
 {
   "name": "calendar",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "A lightweight calendar and task app served by a zero-dependency Node.js server.",
   "main": "main.js",
   "scripts": {
@@ -14,8 +14,8 @@
     "electron-builder": "^26.15.3"
   },
   "build": {
-    "appId": "com.completioncalendar.app",
-    "productName": "Completion Calendar",
+    "appId": "com.taskcalendar.app",
+    "productName": "Task Calendar",
     "files": [
       "main.js",
       "server.js",

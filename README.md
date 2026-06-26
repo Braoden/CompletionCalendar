@@ -1,7 +1,7 @@
 <h1 align="center">
-  <img src="build/icon.ico" alt="Completion Calendar icon" width="96" align="center" />
+  <img src="build/icon.ico" alt="Task Calendar icon" width="96" align="center" />
   &nbsp;
-  Completion Calendar
+  Task Calendar
 </h1>
 
 [![Version](https://img.shields.io/badge/version-1.0.2-blue)](package.json)
@@ -12,7 +12,7 @@
 
 Built for anyone who wants habit tracking to feel tactile instead of like a spreadsheet. Runs as a local web app or a packaged Windows desktop app. **Zero runtime dependencies** — no framework, no build step, no database, no accounts.
 
-![Completion Calendar screenshot](docs/screenshot.png)
+![Task Calendar screenshot](docs/screenshot.png)
 
 ## Features
 
