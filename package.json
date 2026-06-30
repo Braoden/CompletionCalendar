@@ -1,6 +1,6 @@
 {
   "name": "calendar",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "A lightweight calendar and task app served by a zero-dependency Node.js server.",
   "main": "main.js",
   "scripts": {
@@ -16,6 +16,11 @@
   "build": {
     "appId": "com.taskcalendar.app",
     "productName": "Task Calendar",
+    "publish": {
+      "provider": "github",
+      "owner": "Braoden",
+      "repo": "CompletionCalendar"
+    },
     "files": [
       "main.js",
       "server.js",
@@ -32,5 +37,8 @@
     "linux": {
       "target": "AppImage"
     }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }

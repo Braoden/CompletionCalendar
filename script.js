@@ -20,7 +20,9 @@ const PHYSICS = {
     LOAD_STAGGER: 120,      // delay (ms) between each ball on load, so they don't overlap
 };
 
+const DAY_BOX_CAP = 20;  // max balls shown in a single day box (completions can exceed this)
 const JAR_CAP  = 50;     // balls per jar before it "completes", celebrates and empties
+const JARS_PER_SHELF = 4; // full jars per shelf; every 4 completed, a fresh shelf starts
 const JAR_HOLD = 2500;   // ms the "Jar Complete" state holds before the jar drains
 
 // Jar balls hitbox.
@@ -688,6 +690,7 @@ class Calendar {
         const w = dayBox.clientWidth  || 64;
         const h = dayBox.clientHeight || 64;
         const balls = this.readBoxBalls(dayBox);
+        if (balls.length >= DAY_BOX_CAP) return null;   // cap visible balls per day box
         const fresh = this.makeBall(dayBox, taskName, color, type);
         balls.push(fresh);
         this.simulateBox(dayBox, balls, w, h);
@@ -704,6 +707,7 @@ class Calendar {
         if (!jarBody || !btnBall) return;
 
         const launch = () => {
+            if (this.ballsHalted) return;   // shelf opened mid-pulse — drop the launch
             const from = btnBall.getBoundingClientRect();
             this.flyToJar(from, jarBody, task.color, null);
 
@@ -748,6 +752,7 @@ class Calendar {
 
         let t = 0, last = performance.now();
         const tick = (now) => {
+            if (this.ballsHalted) { ball.remove(); return; }
             let dt = (now - last) / 1000; last = now;
             if (dt > 0.05) dt = 0.05;
             t += dt;
@@ -776,11 +781,6 @@ class Calendar {
         fresh.vx = vx;   // carry the launch's horizontal velocity into the jar
         balls.push(fresh);
         this.simulateBox(jarBody, balls, jarBody.clientWidth, jarBody.clientHeight);
-
-        // Every JAR_CAP completions, the jar fills, celebrates and empties.
-        if (jarBody.querySelectorAll('.jar-ball').length >= JAR_CAP) {
-            this.completeJar(jarBody.closest('.tp-jar'), jarBody, color);
-        }
     }
 
     // Jar hit its cap: flood it bottom-to-top in the task color, show "Jar
@@ -887,6 +887,7 @@ class Calendar {
     // place after a delay. Day-box balls spawn from their usual point (staggered
     // so they don't overlap); jar balls fall from the top of the screen.
     dropInBalls() {
+        this.ballsHalted = false;
         this.loadTimers = this.loadTimers || [];
         const card = this.cards[this.selectedMonth];
         if (card) {
@@ -938,12 +939,13 @@ class Calendar {
     closeJarsView() {
         this.jarsView.classList.remove('open');
         document.body.classList.remove('shelf-open');
-        this.dropInBalls();
+        setTimeout(() => this.dropInBalls(), PHYSICS.LOAD_DELAY);
     }
 
     // Cancel pending load-in timers, stop running pile simulations, and clear
     // every ball so dropInBalls can replay from a clean slate.
     stopBallSpawn() {
+        this.ballsHalted = true;   // gate in-flight rAF loops so they don't re-spawn balls
         (this.loadTimers || []).forEach(clearTimeout);
         this.loadTimers = [];
         document.querySelectorAll('.flight-ball').forEach(b => b.remove());
@@ -959,37 +961,86 @@ class Calendar {
             .reduce((sum, day) => sum + (day[name] || 0), 0);
     }
 
-    // 6 shelves (2x3). Each task gets one filled jar per completed JAR_CAP plus
-    // one current jar holding the remainder. Shelves past the task count stay bare.
+    // 6 shelf cells (2x3), one per task. Each task's jars are grouped into shelves
+    // of JARS_PER_SHELF; arrow buttons page between them, defaulting to the newest.
     buildShelves() {
         this.shelvesGrid.innerHTML = '';
         for (let i = 0; i < 6; i++) {
-            const shelf = document.createElement('div');
-            shelf.className = 'shelf';
-
-            const jarsRow = document.createElement('div');
-            jarsRow.className = 'shelf-jars';
-            const plank = document.createElement('div');
-            plank.className = 'shelf-plank';
-            shelf.append(jarsRow, plank);
-
             const task = this.tasks[i];
-            if (task) {
-                const total = this.taskTotal(task.name);
-                const counts = [];
-                for (let f = 0; f < Math.floor(total / JAR_CAP); f++) counts.push(JAR_CAP);
-                counts.push(total % JAR_CAP);   // current jar (may be 0 = empty)
-                // ponytail: settleBox is O(n²)·iters per jar; fine for realistic
-                // completion counts. Cap jar count if a task ever racks up hundreds.
-                counts.forEach(n => jarsRow.appendChild(this.makeShelfJar(task.color, n)));
-
-                const label = document.createElement('div');
-                label.className = 'shelf-label';
-                label.textContent = `${task.name}: ${total}`;
-                shelf.appendChild(label);
-            }
-            this.shelvesGrid.appendChild(shelf);
+            this.shelvesGrid.appendChild(task ? this.buildTaskShelf(task) : this.emptyShelf());
         }
+    }
+
+    emptyShelf() {
+        const shelf = document.createElement('div');
+        shelf.className = 'shelf';
+        const jarsRow = document.createElement('div');
+        jarsRow.className = 'shelf-jars';
+        const plank = document.createElement('div');
+        plank.className = 'shelf-plank';
+        shelf.append(jarsRow, plank);
+        return shelf;
+    }
+
+    buildTaskShelf(task) {
+        const total = this.taskTotal(task.name);
+
+        // One jar per completed JAR_CAP, plus the current jar (remainder, may be 0).
+        const jars = [];
+        for (let f = 0; f < Math.floor(total / JAR_CAP); f++) jars.push(JAR_CAP);
+        jars.push(total % JAR_CAP);
+
+        // Group into shelves of JARS_PER_SHELF; each page is one shelf.
+        const pages = [];
+        for (let k = 0; k < jars.length; k += JARS_PER_SHELF) {
+            pages.push(jars.slice(k, k + JARS_PER_SHELF));
+        }
+        let page = pages.length - 1;   // default to the newest shelf
+
+        const shelf = document.createElement('div');
+        shelf.className = 'shelf';
+        const jarsRow = document.createElement('div');
+        jarsRow.className = 'shelf-jars';
+        const plank = document.createElement('div');
+        plank.className = 'shelf-plank';
+        const prev = this.makeShelfNav('prev');
+        const next = this.makeShelfNav('next');
+        const label = document.createElement('div');
+        label.className = 'shelf-label';
+
+        prev.hidden = next.hidden = pages.length <= 1;
+
+        // ponytail: settleBox is O(n²)·iters per jar; a page caps at JARS_PER_SHELF
+        // jars, so a high total no longer settles dozens of jars at once.
+        const paint = (dir = 0) => {
+            jarsRow.innerHTML = '';
+            pages[page].forEach(n => jarsRow.appendChild(this.makeShelfJar(task.color, n)));
+            prev.disabled = page === 0;
+            next.disabled = page === pages.length - 1;
+            label.textContent = `${task.name}: ${total}`;
+            if (dir) {
+                jarsRow.classList.remove('slide-in-left', 'slide-in-right');
+                void jarsRow.offsetWidth;   // restart the animation
+                jarsRow.classList.add(dir > 0 ? 'slide-in-right' : 'slide-in-left');
+            }
+        };
+        prev.addEventListener('click', () => { if (page > 0) { page--; paint(-1); } });
+        next.addEventListener('click', () => { if (page < pages.length - 1) { page++; paint(1); } });
+        paint();
+
+        shelf.append(prev, jarsRow, next, plank, label);
+        return shelf;
+    }
+
+    // Circular outline chevron button matching the shelf-toggle tabs.
+    makeShelfNav(dir) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `shelf-nav ${dir}`;
+        btn.setAttribute('aria-label', dir === 'prev' ? 'Previous shelf' : 'Next shelf');
+        const pts = dir === 'prev' ? '15 6 9 12 15 18' : '9 6 15 12 9 18';
+        btn.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="${pts}"/></svg>`;
+        return btn;
     }
 
     // One jar with n settled balls, reusing the main-page jar markup, styling
@@ -998,6 +1049,9 @@ class Calendar {
         const jar = document.createElement('div');
         jar.className = 'tp-jar shelf-jar' + (n > 0 ? ' filled' : '');
         jar.innerHTML = '<span class="tp-jar-lid"></span><span class="tp-jar-body"></span>';
+        // Drive the filled-jar hover highlight in the task's color, like the main panel.
+        jar.style.setProperty('--task-color', color);
+        jar.style.setProperty('--task-color-soft', this.hexToRgba(color, 0.18));
         const body = jar.querySelector('.tp-jar-body');
         if (n >= JAR_CAP) {
             // Completed jar: solid task-color fill, no individual balls.
@@ -1041,6 +1095,7 @@ class Calendar {
 
         let last = performance.now(), y = 0, vy = 0;
         const tick = (now) => {
+            if (this.ballsHalted) { ball.remove(); return; }
             let dt = (now - last) / 1000; last = now;
             if (dt > 0.05) dt = 0.05;
             vy += g * dt;
@@ -1081,6 +1136,15 @@ class Calendar {
         btn.classList.add('has-balls');
         this.launchBallToJar(task, btn);
 
+        // Complete the jar every JAR_CAP completions, by count — not by how many
+        // balls actually landed (interrupted flights can leave the jar short).
+        if (this.taskTotal(task.name) % JAR_CAP === 0) {
+            const jar = this.jars[+btn.dataset.jarIndex];
+            const jarBody = jar?.querySelector('.tp-jar-body');
+            // ponytail: 600ms lets the launched ball land before the jar floods.
+            if (jarBody) setTimeout(() => this.completeJar(jar, jarBody, task.color), 600);
+        }
+
         if (task.type === 'Repeated') {
             const countEl = btn.querySelector('.dp-task-count');
             if (countEl) countEl.textContent = this.completions[dateStr][task.name];
@@ -1105,7 +1169,7 @@ class Calendar {
         }).catch(() => {
             // Rollback on network failure
             this.completions[dateStr][task.name]--;
-            fresh.el.remove();
+            fresh?.el.remove();
             const remaining = this.completions[dateStr]?.[task.name] || 0;
             btn.classList.toggle('has-balls', remaining > 0);
             if (task.type === 'Completion') {
@@ -1224,7 +1288,7 @@ class Calendar {
             Object.entries(dayData).forEach(([taskName, count]) => {
                 const task = this.tasks.find(t => t.name === taskName);
                 if (!task || !count) return;
-                for (let i = 0; i < count; i++) {
+                for (let i = 0; i < count && balls.length < DAY_BOX_CAP; i++) {
                     balls.push(this.makeBall(dayBox, taskName, task.color, task.type));
                 }
             });

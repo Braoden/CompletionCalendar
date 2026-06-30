@@ -1,4 +1,5 @@
 const { app, BrowserWindow } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('path');
 
 // Persist tasks/completions in the per-user data dir, not inside the read-only asar.
@@ -10,6 +11,7 @@ function createWindow() {
     const win = new BrowserWindow({
         width: 1100,
         height: 800,
+        fullscreen: true,
         title: 'Task Calendar',
         icon: path.join(__dirname, 'build', 'icon.ico'),
     });
@@ -23,6 +25,10 @@ app.whenReady().then(() => {
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
+
+    // No-ops in dev; in packaged builds it checks GitHub Releases, downloads
+    // in the background, and installs the update on quit.
+    autoUpdater.checkForUpdatesAndNotify();
 });
 
 app.on('window-all-closed', () => {

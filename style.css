@@ -840,25 +840,22 @@ body {
 #yearTitle { flex: 1; }
 
 .nav-btn {
-    background: #0c2233;
-    color: #5bb4ef;
-    border: 1px solid #173a54;
+    background: transparent;
+    color: #d6ecfb;
+    border: 1px solid #2f6394;
     width: 34px;
     height: 34px;
-    border-radius: 8px;
-    font-size: 15px;
+    border-radius: 50%;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease, transform 0.1s ease;
+    transition: background 0.18s ease, transform 0.1s ease;
     flex-shrink: 0;
 }
 
 .nav-btn:hover {
-    background: #123249;
-    color: #d6ecfb;
-    border-color: #23a8f2;
+    background: rgba(47, 99, 148, 0.2);
 }
 
 .nav-btn:active { transform: scale(0.92); }
@@ -1125,35 +1122,52 @@ body {
 }
 
 /* ── "View Jars" button + shelf page ── */
+/* Circular outline tab fixed to the right of the screen; slides the shelf in. */
 .view-jars-btn {
-    display: block;
-    margin: 24px auto 0;
-    margin-top: 40px;
-    padding: 10px 22px;
+    position: fixed;
+    top: 50%;
+    right: 16px;
+    transform: translateY(-50%);
+    z-index: 90;
+    width: 46px;
+    height: 46px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     border: 1px solid #2f6394;
-    border-radius: 8px;
-    background: #21486a;
+    border-radius: 50%;
+    background: transparent;
     color: #d6ecfb;
     font: inherit;
-    font-weight: 600;
+    font-size: 22px;
+    font-weight: 700;
     cursor: pointer;
-    transition: background 0.2s ease;
+    transition: background 0.2s ease, opacity 0.3s ease;
 }
-.view-jars-btn:hover { background: #2a5a86; }
+.view-jars-btn:hover { background: rgba(47, 99, 148, 0.2); }
+body.shelf-open .view-jars-btn { opacity: 0; pointer-events: none; }
 
-/* Fade the calendar (and floating buttons) out while the shelf is open. */
-.app-wrapper,
+/* Slide the main page off to the left while the shelf is open. */
+.app-wrapper {
+    transition: transform 0.4s ease;
+}
+body.shelf-open .app-wrapper {
+    transform: translateX(-100%);
+    pointer-events: none;
+}
+
+/* Fade the floating chrome buttons out while the shelf is open. */
 .add-task-btn,
 .del-task-btn {
     transition: opacity 0.3s ease;
 }
-body.shelf-open .app-wrapper,
 body.shelf-open .add-task-btn,
 body.shelf-open .del-task-btn {
     opacity: 0;
     pointer-events: none;
 }
 
+/* Shelf page slides in from the right, back out to the right on close. */
 .jars-view {
     position: fixed;
     inset: 0;
@@ -1161,25 +1175,34 @@ body.shelf-open .del-task-btn {
     background: #0a1722;
     overflow: auto;
     padding: 64px 48px 48px;
-    opacity: 0;
-    visibility: hidden;
-    transition: opacity 0.3s ease, visibility 0.3s ease;
+    transform: translateX(100%);
+    transition: transform 0.4s ease;
 }
-.jars-view.open { opacity: 1; visibility: visible; }
+.jars-view.open { transform: translateX(0); }
 
+/* Circular outline tab on the left of the shelf page. The shelf's own transform
+   makes this fixed element position relative to it, so it slides with the page. */
 .jars-back-btn {
-    position: absolute;
-    top: 24px;
-    left: 24px;
-    padding: 8px 16px;
+    position: fixed;
+    top: 50%;
+    left: 16px;
+    transform: translateY(-50%);
+    z-index: 110;
+    width: 46px;
+    height: 46px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     border: 1px solid #2f6394;
-    border-radius: 8px;
+    border-radius: 50%;
     background: transparent;
     color: #d6ecfb;
     font: inherit;
+    font-size: 22px;
+    font-weight: 700;
     cursor: pointer;
 }
-.jars-back-btn:hover { background: #21486a; }
+.jars-back-btn:hover { background: rgba(47, 99, 148, 0.2); }
 
 .shelves-grid {
     display: grid;
@@ -1191,19 +1214,57 @@ body.shelf-open .del-task-btn {
 }
 
 .shelf {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: stretch;
 }
 
+/* Page between a task's shelves. Same circular outline chevron as the shelf tabs,
+   flanking the jar row (162px tall -> centered at 81px). */
+.shelf-nav {
+    position: absolute;
+    top: 81px;
+    transform: translateY(-50%);
+    z-index: 2;
+    width: 38px;
+    height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #2f6394;
+    border-radius: 50%;
+    background: transparent;
+    color: #d6ecfb;
+    cursor: pointer;
+    transition: background 0.2s ease, opacity 0.2s ease;
+}
+.shelf-nav.prev { left: -6px; }
+.shelf-nav.next { right: -6px; }
+.shelf-nav:hover { background: rgba(47, 99, 148, 0.2); }
+.shelf-nav:disabled { opacity: 0.25; cursor: default; }
+.shelf-nav:disabled:hover { background: transparent; }
+
 .shelf-jars {
     display: flex;
     align-items: flex-end;
     justify-content: center;
-    gap: 28px;
+    gap: 20px;
     height: 162px;
     transform: scale(0.9);
     transform-origin: bottom center;
+}
+
+/* Slide the incoming shelf in from the side the arrow points. */
+.shelf-jars.slide-in-right { animation: shelfSlideRight 0.3s ease; }
+.shelf-jars.slide-in-left  { animation: shelfSlideLeft 0.3s ease; }
+@keyframes shelfSlideRight {
+    from { transform: scale(0.9) translateX(80px); opacity: 0; }
+    to   { transform: scale(0.9) translateX(0);    opacity: 1; }
+}
+@keyframes shelfSlideLeft {
+    from { transform: scale(0.9) translateX(-80px); opacity: 0; }
+    to   { transform: scale(0.9) translateX(0);     opacity: 1; }
 }
 
 /* Reuse the main-page jar look, but drop the task-panel grid stagger/height. */
@@ -1228,8 +1289,8 @@ body.shelf-open .del-task-btn {
 
 .shelf-label {
     align-self: flex-start;
-    margin-top: 10px;
+    margin-top: 12px;
     font-weight: 600;
-    color: #e8c79a;
+    color: #d6ecfb;
     letter-spacing: 0.2px;
 }
